@@ -21,16 +21,6 @@ MineMods Updater est un logiciel desktop Windows qui vérifie et applique les mi
 - Logs repliables pour laisser plus de place à la liste des mods
 - Export de rapport **JSON + CSV** (avant/après opération)
 
-## Captures (à ajouter)
-
-Ajoute tes captures dans un dossier `assets/`, puis dé-commente ces lignes:
-
-```md
-![Écran principal](assets/main-window.png)
-![Filtres et sélection visible](assets/filters-selection.png)
-![Rapport exporté](assets/report-export.png)
-```
-
 ## Prérequis
 
 - Windows 10/11
