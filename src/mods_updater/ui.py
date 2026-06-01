@@ -675,6 +675,30 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_show_logs_changed(self) -> None:
         self.logs_card.setVisible(self.show_logs_checkbox.isChecked())
 
+    def _reset_results_filters(self) -> None:
+        """Reset status/source filters so freshly rescanned rows stay visible."""
+        self.status_filter_combo.blockSignals(True)
+        self.source_filter_combo.blockSignals(True)
+        try:
+            self.status_filter_combo.setCurrentIndex(0)
+            self.source_filter_combo.setCurrentIndex(0)
+        finally:
+            self.status_filter_combo.blockSignals(False)
+            self.source_filter_combo.blockSignals(False)
+
+    def _confirm_dialog(self, title: str, text: str) -> bool:
+        dialog = QtWidgets.QMessageBox(self)
+        dialog.setIcon(QtWidgets.QMessageBox.Icon.Question)
+        dialog.setWindowTitle(title)
+        dialog.setText(text)
+
+        yes_button = dialog.addButton("Oui", QtWidgets.QMessageBox.ButtonRole.YesRole)
+        no_button = dialog.addButton("Non", QtWidgets.QMessageBox.ButtonRole.NoRole)
+        dialog.setDefaultButton(no_button)
+        dialog.exec()
+
+        return dialog.clickedButton() == yes_button
+
     def _set_busy(self, busy: bool, label: str = "") -> None:
         self._busy = busy
         self.scan_button.setEnabled(not busy)
@@ -919,13 +943,12 @@ class MainWindow(QtWidgets.QMainWindow):
         more = "" if len(targets) <= 10 else f"\n... +{len(targets) - 10} autre(s)"
         settings = self._save_form_settings()
         mode_text = "SIMULATION dry-run" if settings.dry_run else "application réelle"
-        answer = QtWidgets.QMessageBox.question(
-            self,
+        confirmed = self._confirm_dialog(
             "Confirmation",
             f"Lancer {len(targets)} mise(s) à jour en mode {mode_text} ?\n\n{names}{more}\n\n"
             "Les anciens .jar seront renommés en .old hors dry-run.",
         )
-        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+        if not confirmed:
             return
 
         def work() -> tuple[list, list, list[LocalMod]]:
@@ -951,6 +974,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
             self.local_mods = list(post_mods) if isinstance(post_mods, list) else []
             self.update_infos = []
+            self._reset_results_filters()
             self._populate_table()
 
             before = self.before_snapshot or build_before_snapshot(self.local_mods, [])
