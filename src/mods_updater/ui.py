@@ -26,12 +26,8 @@ from .reporting import (
     make_report_basename,
 )
 from .settings_store import (
-    add_profile,
     load_settings,
-    remove_profile,
     save_settings,
-    set_active_profile,
-    write_back_active_profile,
 )
 from .update_service import CHANGELOG_CATEGORY_ORDER, apply_updates, build_changelog_text, check_updates, get_last_check_stats
 
@@ -70,6 +66,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_infos: list[UpdateInfo] = []
         self.before_snapshot: dict | None = None
         self.last_report: dict | None = None
+        self._selected_mod_page_url = ""
 
         self._threads: set[TaskThread] = set()
         self._busy = False
@@ -96,7 +93,7 @@ class MainWindow(QtWidgets.QMainWindow):
         title = QtWidgets.QLabel(APP_NAME)
         title.setObjectName("heroTitle")
         subtitle = QtWidgets.QLabel(
-            "Scan des .jar, score de matching providers, simulation dry-run, export de rapports et backup .old"
+            "Scan des .jar, vérification providers, simulation dry-run, export de rapports et backup .old"
         )
         subtitle.setObjectName("heroSubtitle")
         subtitle.setWordWrap(True)
@@ -117,13 +114,6 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.setContentsMargins(18, 18, 18, 18)
         controls_layout.setHorizontalSpacing(12)
         controls_layout.setVerticalSpacing(10)
-
-        self.profile_combo = QtWidgets.QComboBox()
-        self.profile_combo.currentIndexChanged.connect(self._on_profile_changed)
-        self.profile_new_button = QtWidgets.QPushButton("Nouveau profil")
-        self.profile_new_button.clicked.connect(self._create_profile)
-        self.profile_delete_button = QtWidgets.QPushButton("Supprimer profil")
-        self.profile_delete_button.clicked.connect(self._delete_profile)
 
         self.mods_dir_input = QtWidgets.QLineEdit()
         self.mods_dir_input.setPlaceholderText("Dossier mods Minecraft")
@@ -168,23 +158,15 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_selected_button.clicked.connect(self._update_selected_mods)
         self.update_all_button = QtWidgets.QPushButton("Tout mettre à jour")
         self.update_all_button.clicked.connect(self._update_all_mods)
-        self.matching_button = QtWidgets.QPushButton("Confiance du matching")
-        self.matching_button.clicked.connect(self._show_matching_confidence_dialog)
         self.export_report_button = QtWidgets.QPushButton("Exporter le rapport JSON/CSV")
         self.export_report_button.clicked.connect(self._export_report)
 
         self.scan_button.setToolTip("Scanner les mods présents dans le dossier (auto-scan aussi après sélection du dossier).")
         self.check_updates_button.setToolTip("Vérifier les mises à jour disponibles sur les providers (check parallèle + cache court).")
-        self.matching_button.setToolTip("Étape 3: contrôler les scores de matching avant validation.")
         self.dry_run_checkbox.setToolTip("Option: simuler les actions sans modifier les fichiers .jar.")
-        self.update_selected_button.setToolTip("Étape 4: appliquer uniquement les mods cochés.")
-        self.update_all_button.setToolTip("Étape 4: appliquer toutes les mises à jour disponibles.")
-        self.export_report_button.setToolTip("Étape 5: exporter un rapport JSON/CSV avant ou après opération.")
-
-        controls_layout.addWidget(QtWidgets.QLabel("Profil d'instance"), 0, 0)
-        controls_layout.addWidget(self.profile_combo, 0, 1, 1, 2)
-        controls_layout.addWidget(self.profile_new_button, 0, 3)
-        controls_layout.addWidget(self.profile_delete_button, 0, 4)
+        self.update_selected_button.setToolTip("Appliquer uniquement les mods cochés.")
+        self.update_all_button.setToolTip("Appliquer toutes les mises à jour disponibles.")
+        self.export_report_button.setToolTip("Exporter un rapport JSON/CSV avant ou après opération.")
 
         controls_layout.addWidget(QtWidgets.QLabel("Dossier mods"), 1, 0)
         controls_layout.addWidget(self.mods_dir_input, 1, 1, 1, 3)
@@ -215,7 +197,6 @@ class MainWindow(QtWidgets.QMainWindow):
         self.show_logs_checkbox.stateChanged.connect(self._on_show_logs_changed)
 
         controls_layout.addWidget(self.show_logs_checkbox, 6, 2)
-        controls_layout.addWidget(self.matching_button, 6, 3)
         controls_layout.addWidget(self.export_report_button, 6, 4)
 
         root_layout.addWidget(controls)
@@ -234,42 +215,39 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mods_search_input.setPlaceholderText("Rechercher un mod (nom, ID, fichier)")
         self.mods_search_input.textChanged.connect(self._on_table_filter_changed)
 
-        self.status_filter_available = QtWidgets.QCheckBox("Dispo")
-        self.status_filter_uptodate = QtWidgets.QCheckBox("À jour")
-        self.status_filter_notfound = QtWidgets.QCheckBox("Introuv.")
-        self.status_filter_error = QtWidgets.QCheckBox("Erreur")
-        self.status_filter_scanned = QtWidgets.QCheckBox("Scanné")
+        self.status_filter_combo = QtWidgets.QComboBox()
+        self.status_filter_combo.addItem("Tous les états", "")
+        self.status_filter_combo.addItem("Mises à jour", "update_available")
+        self.status_filter_combo.addItem("À jour", "up_to_date")
+        self.status_filter_combo.addItem("Introuvables", "not_found")
+        self.status_filter_combo.addItem("Erreurs", "error")
+        self.status_filter_combo.addItem("Scannés", "scanned")
+        self.status_filter_combo.currentIndexChanged.connect(self._on_table_filter_changed)
 
-        for checkbox in [
-            self.status_filter_available,
-            self.status_filter_uptodate,
-            self.status_filter_notfound,
-            self.status_filter_error,
-            self.status_filter_scanned,
-        ]:
-            checkbox.setChecked(True)
-            checkbox.stateChanged.connect(self._on_table_filter_changed)
+        self.source_filter_combo = QtWidgets.QComboBox()
+        self.source_filter_combo.addItem("Toutes les sources", "")
+        self.source_filter_combo.addItem("Modrinth", "modrinth")
+        self.source_filter_combo.addItem("CurseForge", "curseforge")
+        self.source_filter_combo.addItem("Autre", "other")
+        self.source_filter_combo.currentIndexChanged.connect(self._on_table_filter_changed)
 
-        self.source_filter_modrinth = QtWidgets.QCheckBox("Modrinth")
-        self.source_filter_curseforge = QtWidgets.QCheckBox("CurseForge")
-        self.source_filter_other = QtWidgets.QCheckBox("Autre")
+        self.select_visible_button = QtWidgets.QPushButton("Tout cocher (affichés)")
+        self.select_visible_button.clicked.connect(lambda: self._set_check_state_for_visible_rows(QtCore.Qt.CheckState.Checked))
+        self.clear_visible_button = QtWidgets.QPushButton("Tout décocher (affichés)")
+        self.clear_visible_button.clicked.connect(lambda: self._set_check_state_for_visible_rows(QtCore.Qt.CheckState.Unchecked))
 
-        for checkbox in [self.source_filter_modrinth, self.source_filter_curseforge, self.source_filter_other]:
-            checkbox.setChecked(True)
-            checkbox.stateChanged.connect(self._on_table_filter_changed)
+        self.visible_count_label = QtWidgets.QLabel("Affichés: 0/0")
+        self.visible_count_label.setObjectName("visibleCount")
 
         table_filters.addWidget(QtWidgets.QLabel("Recherche:"))
         table_filters.addWidget(self.mods_search_input, 2)
         table_filters.addWidget(QtWidgets.QLabel("État:"))
-        table_filters.addWidget(self.status_filter_available)
-        table_filters.addWidget(self.status_filter_uptodate)
-        table_filters.addWidget(self.status_filter_notfound)
-        table_filters.addWidget(self.status_filter_error)
-        table_filters.addWidget(self.status_filter_scanned)
+        table_filters.addWidget(self.status_filter_combo)
         table_filters.addWidget(QtWidgets.QLabel("Source:"))
-        table_filters.addWidget(self.source_filter_modrinth)
-        table_filters.addWidget(self.source_filter_curseforge)
-        table_filters.addWidget(self.source_filter_other)
+        table_filters.addWidget(self.source_filter_combo)
+        table_filters.addWidget(self.select_visible_button)
+        table_filters.addWidget(self.clear_visible_button)
+        table_filters.addWidget(self.visible_count_label)
         table_filters.addStretch(1)
 
         table_layout.addLayout(table_filters)
@@ -294,15 +272,19 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mods_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.mods_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.mods_table.setSortingEnabled(True)
-        self.mods_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
-        self.mods_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(7, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        self.mods_table.horizontalHeader().setSectionResizeMode(8, QtWidgets.QHeaderView.ResizeMode.Stretch)
+        header = self.mods_table.horizontalHeader()
+        header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
+        header.setMinimumSectionSize(56)
+        header.setStretchLastSection(False)
+        self.mods_table.setColumnWidth(0, 56)
+        self.mods_table.setColumnWidth(1, 280)
+        self.mods_table.setColumnWidth(2, 180)
+        self.mods_table.setColumnWidth(3, 130)
+        self.mods_table.setColumnWidth(4, 130)
+        self.mods_table.setColumnWidth(5, 160)
+        self.mods_table.setColumnWidth(6, 120)
+        self.mods_table.setColumnWidth(7, 90)
+        self.mods_table.setColumnWidth(8, 260)
         self.mods_table.itemSelectionChanged.connect(self._on_table_selection_changed)
 
         table_layout.addWidget(self.mods_table)
@@ -315,6 +297,15 @@ class MainWindow(QtWidgets.QMainWindow):
 
         detail_title = QtWidgets.QLabel("Détails des versions")
         detail_title.setObjectName("panelTitle")
+        self.open_mod_page_button = QtWidgets.QPushButton("Ouvrir la page du mod")
+        self.open_mod_page_button.setEnabled(False)
+        self.open_mod_page_button.clicked.connect(self._open_selected_mod_page)
+
+        detail_header = QtWidgets.QHBoxLayout()
+        detail_header.setSpacing(8)
+        detail_header.addWidget(detail_title)
+        detail_header.addStretch(1)
+        detail_header.addWidget(self.open_mod_page_button)
 
         filters_row = QtWidgets.QHBoxLayout()
         filters_row.setSpacing(8)
@@ -335,7 +326,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.details_text = QtWidgets.QPlainTextEdit()
         self.details_text.setReadOnly(True)
 
-        detail_layout.addWidget(detail_title)
+        detail_layout.addLayout(detail_header)
         detail_layout.addLayout(filters_row)
         detail_layout.addWidget(self.details_text, 1)
 
@@ -487,21 +478,6 @@ class MainWindow(QtWidgets.QMainWindow):
             """
         )
 
-    def _populate_profiles_combo(self) -> None:
-        names = list(self.settings.profiles.keys())
-        if not names:
-            names = ["Default"]
-
-        self.profile_combo.blockSignals(True)
-        self.profile_combo.clear()
-        self.profile_combo.addItems(names)
-
-        idx = self.profile_combo.findText(self.settings.active_profile)
-        if idx == -1:
-            idx = 0
-        self.profile_combo.setCurrentIndex(idx)
-        self.profile_combo.blockSignals(False)
-
     def _set_changelog_filters(self, filters: list[str]) -> None:
         selected = set(filters)
 
@@ -528,7 +504,7 @@ class MainWindow(QtWidgets.QMainWindow):
             selected.append("other")
         return selected
 
-    def _load_active_profile_fields(self) -> None:
+    def _load_form_fields(self) -> None:
         self.mods_dir_input.setText(self.settings.mods_directory)
         self._set_combo_value(self.mc_version_combo, self.settings.minecraft_version)
         self._set_loader_combo_value(self.settings.loader)
@@ -545,8 +521,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def _load_settings_to_form(self) -> None:
         self._loading_form = True
         try:
-            self._populate_profiles_combo()
-            self._load_active_profile_fields()
+            self._load_form_fields()
         finally:
             self._loading_form = False
 
@@ -565,15 +540,9 @@ class MainWindow(QtWidgets.QMainWindow):
             selected_filters = list(CHANGELOG_CATEGORY_ORDER)
         self.settings.changelog_filters = selected_filters
 
-        write_back_active_profile(self.settings)
-
     def _save_form_settings(self):
         if self._loading_form:
             return self.settings
-
-        selected_profile = self.profile_combo.currentText().strip()
-        if selected_profile and selected_profile != self.settings.active_profile and selected_profile in self.settings.profiles:
-            set_active_profile(self.settings, selected_profile)
 
         self._write_form_to_settings_object()
         save_settings(self.settings)
@@ -628,36 +597,13 @@ class MainWindow(QtWidgets.QMainWindow):
     def _on_table_filter_changed(self) -> None:
         self._apply_table_filters()
 
-    def _selected_status_filters(self) -> set[str]:
-        selected: set[str] = set()
-        if self.status_filter_available.isChecked():
-            selected.add("update_available")
-        if self.status_filter_uptodate.isChecked():
-            selected.add("up_to_date")
-        if self.status_filter_notfound.isChecked():
-            selected.add("not_found")
-        if self.status_filter_error.isChecked():
-            selected.add("error")
-        if self.status_filter_scanned.isChecked():
-            selected.add("scanned")
-        return selected
-
-    def _selected_source_filters(self) -> set[str]:
-        selected: set[str] = set()
-        if self.source_filter_modrinth.isChecked():
-            selected.add("modrinth")
-        if self.source_filter_curseforge.isChecked():
-            selected.add("curseforge")
-        if self.source_filter_other.isChecked():
-            selected.add("other")
-        return selected
-
     def _apply_table_filters(self) -> None:
         query = self.mods_search_input.text().strip().lower()
-        status_filters = self._selected_status_filters()
-        source_filters = self._selected_source_filters()
+        status_filter = str(self.status_filter_combo.currentData() or "")
+        source_filter = str(self.source_filter_combo.currentData() or "")
 
         visible_row = -1
+        visible_count = 0
         for row in range(self.mods_table.rowCount()):
             name_item = self.mods_table.item(row, 1)
             id_item = self.mods_table.item(row, 2)
@@ -680,14 +626,16 @@ class MainWindow(QtWidgets.QMainWindow):
             )
 
             matches_query = not query or query in haystack
-            matches_status = not status_filters or status_key in status_filters
-            matches_source = not source_filters or source_key in source_filters
+            matches_status = not status_filter or status_key == status_filter
+            matches_source = not source_filter or source_key == source_filter
 
             hidden = not (matches_query and matches_status and matches_source)
             self.mods_table.setRowHidden(row, hidden)
 
             if not hidden and visible_row == -1:
                 visible_row = row
+            if not hidden:
+                visible_count += 1
 
         if visible_row >= 0:
             selected_rows = self.mods_table.selectionModel().selectedRows()
@@ -695,6 +643,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 self.mods_table.selectRow(visible_row)
         else:
             self.details_text.clear()
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
+
+        self.visible_count_label.setText(f"Affichés: {visible_count}/{self.mods_table.rowCount()}")
 
     def _on_show_logs_changed(self) -> None:
         self.logs_card.setVisible(self.show_logs_checkbox.isChecked())
@@ -706,12 +658,11 @@ class MainWindow(QtWidgets.QMainWindow):
         self.update_selected_button.setEnabled(not busy)
         self.update_all_button.setEnabled(not busy)
         self.auto_detect_button.setEnabled(not busy)
-        self.matching_button.setEnabled(not busy)
         self.export_report_button.setEnabled(not busy)
+        self.select_visible_button.setEnabled(not busy)
+        self.clear_visible_button.setEnabled(not busy)
+        self.open_mod_page_button.setEnabled((not busy) and bool(self._selected_mod_page_url))
 
-        self.profile_combo.setEnabled(not busy)
-        self.profile_new_button.setEnabled(not busy)
-        self.profile_delete_button.setEnabled(not busy)
         self.dry_run_checkbox.setEnabled(not busy)
         self.show_logs_checkbox.setEnabled(not busy)
 
@@ -907,6 +858,28 @@ class MainWindow(QtWidgets.QMainWindow):
 
         return targets
 
+    def _set_check_state_for_visible_rows(self, state: QtCore.Qt.CheckState) -> None:
+        changed = 0
+        eligible = 0
+        for row in range(self.mods_table.rowCount()):
+            if self.mods_table.isRowHidden(row):
+                continue
+
+            check_item = self.mods_table.item(row, 0)
+            if check_item is None:
+                continue
+
+            if not bool(check_item.flags() & QtCore.Qt.ItemFlag.ItemIsUserCheckable):
+                continue
+
+            eligible += 1
+            if check_item.checkState() != state:
+                check_item.setCheckState(state)
+                changed += 1
+
+        action_label = "cochés" if state == QtCore.Qt.CheckState.Checked else "décochés"
+        self._log(f"Sélection visible: {changed}/{eligible} mod(s) {action_label}.")
+
     def _run_updates(self, targets: list[UpdateInfo]) -> None:
         """Apply updates (or dry-run simulation) and persist a post-operation report."""
         names = "\n".join(f"- {item.local_mod.name}" for item in targets[:10])
@@ -964,6 +937,8 @@ class MainWindow(QtWidgets.QMainWindow):
 
     def _populate_table(self) -> None:
         self.local_mods_by_path = {str(mod.path): mod for mod in self.local_mods}
+        self._selected_mod_page_url = ""
+        self.open_mod_page_button.setEnabled(False)
         self.mods_table.setSortingEnabled(False)
         self.mods_table.setRowCount(0)
         by_path = {info.local_mod.path: info for info in self.update_infos}
@@ -1031,6 +1006,8 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mods_table.selectRow(0)
         else:
             self.details_text.setPlainText("Aucun mod détecté.")
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
 
         self.mods_table.setSortingEnabled(True)
         self.mods_table.sortItems(1, QtCore.Qt.SortOrder.AscendingOrder)
@@ -1056,22 +1033,30 @@ class MainWindow(QtWidgets.QMainWindow):
         selected_rows = self.mods_table.selectionModel().selectedRows()
         if not selected_rows:
             self.details_text.clear()
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
             return
 
         row = selected_rows[0].row()
         if row < 0:
             self.details_text.clear()
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
             return
 
         mod_item = self.mods_table.item(row, 1)
         if mod_item is None:
             self.details_text.clear()
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
             return
 
         mod_path = str(mod_item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
         local = self.local_mods_by_path.get(mod_path)
         if local is None:
             self.details_text.clear()
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
             return
 
         info = next((item for item in self.update_infos if item.local_mod.path == local.path), None)
@@ -1087,124 +1072,47 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Lance une vérification des mises à jour pour voir les détails de versions.",
             ]
             self.details_text.setPlainText("\n".join(lines))
+            self._selected_mod_page_url = ""
+            self.open_mod_page_button.setEnabled(False)
             return
 
         selected_filters = set(self._selected_changelog_filters())
         self.details_text.setPlainText(build_changelog_text(info, enabled_filters=selected_filters))
+        self._selected_mod_page_url = self._resolve_update_page_url(info)
+        self.open_mod_page_button.setEnabled(bool(self._selected_mod_page_url) and not self._busy)
 
-    def _on_table_selection_changed(self) -> None:
-        self._refresh_details_from_selection()
+    def _resolve_update_page_url(self, info: UpdateInfo) -> str:
+        if info.matched_project_url:
+            return info.matched_project_url
 
-    def _show_matching_confidence_dialog(self) -> None:
-        """Display provider candidates, confidence, and selected matches per mod."""
-        if not self.update_infos:
+        if info.provider == "Modrinth" and info.matched_project_id:
+            return f"https://modrinth.com/mod/{info.matched_project_id}"
+
+        if info.provider == "CurseForge" and info.matched_project_slug:
+            return f"https://www.curseforge.com/minecraft/mc-mods/{info.matched_project_slug}"
+
+        return ""
+
+    def _open_selected_mod_page(self) -> None:
+        url = self._selected_mod_page_url.strip()
+        if not url:
             QtWidgets.QMessageBox.information(
                 self,
-                "Confiance du matching",
-                "Lance d'abord une vérification des mises à jour pour voir les scores.",
+                "Page du mod",
+                "Aucune page provider associée au mod sélectionné.",
             )
             return
 
-        dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Confiance du matching (pré-validation)")
-        dialog.resize(1220, 680)
+        opened = QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+        if not opened:
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Page du mod",
+                f"Impossible d'ouvrir: {url}",
+            )
 
-        layout = QtWidgets.QVBoxLayout(dialog)
-        info_label = QtWidgets.QLabel(
-            "Scores remontés par provider avant validation finale.\n"
-            "Un candidat marqué 'sélectionné' est celui retenu pour le mod."
-        )
-        info_label.setWordWrap(True)
-
-        table = QtWidgets.QTableWidget(0, 10)
-        table.setHorizontalHeaderLabels(
-            [
-                "Mod",
-                "Provider",
-                "Rang",
-                "Confiance",
-                "Score",
-                "Projet",
-                "Slug",
-                "Downloads",
-                "Sélection",
-                "Note",
-            ]
-        )
-        table.verticalHeader().setVisible(False)
-        table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
-        table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
-        table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
-        table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(5, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(6, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(7, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(8, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
-        table.horizontalHeader().setSectionResizeMode(9, QtWidgets.QHeaderView.ResizeMode.Stretch)
-
-        def append_row(values: list[str], accepted: bool) -> None:
-            row = table.rowCount()
-            table.insertRow(row)
-            for col, value in enumerate(values):
-                table.setItem(row, col, QtWidgets.QTableWidgetItem(value))
-            if accepted:
-                for col in range(table.columnCount()):
-                    item = table.item(row, col)
-                    if item is not None:
-                        item.setBackground(QtGui.QColor("#1f5f4a"))
-
-        for info in self.update_infos:
-            if info.match_candidates:
-                sorted_candidates = sorted(
-                    info.match_candidates,
-                    key=lambda candidate: (1 if candidate.accepted else 0, candidate.score, candidate.confidence),
-                    reverse=True,
-                )
-                for candidate in sorted_candidates:
-                    append_row(
-                        [
-                            info.local_mod.name,
-                            candidate.provider,
-                            str(candidate.rank),
-                            f"{candidate.confidence:.4f}",
-                            f"{candidate.score:.3f}",
-                            candidate.project_id,
-                            candidate.slug,
-                            str(candidate.downloads),
-                            "oui" if candidate.accepted else "non",
-                            candidate.note or info.match_note,
-                        ],
-                        candidate.accepted,
-                    )
-            else:
-                append_row(
-                    [
-                        info.local_mod.name,
-                        info.provider or "-",
-                        "-",
-                        f"{info.match_confidence:.4f}",
-                        f"{info.match_score:.3f}",
-                        info.matched_project_id or "-",
-                        "-",
-                        "-",
-                        "-",
-                        info.match_note or info.message,
-                    ],
-                    False,
-                )
-
-        close_button = QtWidgets.QPushButton("Fermer")
-        close_button.clicked.connect(dialog.accept)
-
-        layout.addWidget(info_label)
-        layout.addWidget(table, 1)
-        layout.addWidget(close_button, 0, QtCore.Qt.AlignmentFlag.AlignRight)
-
-        dialog.exec()
+    def _on_table_selection_changed(self) -> None:
+        self._refresh_details_from_selection()
 
     def _export_report(self) -> None:
         """Export the latest in-memory report to JSON and CSV files."""
@@ -1239,104 +1147,6 @@ class MainWindow(QtWidgets.QMainWindow):
             "Export terminé",
             f"JSON: {json_path}\nCSV: {csv_path}",
         )
-
-    def _clear_results(self) -> None:
-        self.local_mods = []
-        self.update_infos = []
-        self.before_snapshot = None
-        self.last_report = None
-        self._populate_table()
-
-    def _on_profile_changed(self) -> None:
-        if self._loading_form:
-            return
-
-        profile_name = self.profile_combo.currentText().strip()
-        if not profile_name or profile_name == self.settings.active_profile:
-            return
-
-        try:
-            self._write_form_to_settings_object()
-            set_active_profile(self.settings, profile_name)
-            save_settings(self.settings)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Profil", f"Impossible de changer de profil: {exc}")
-            self._loading_form = True
-            try:
-                self._populate_profiles_combo()
-            finally:
-                self._loading_form = False
-            return
-
-        self._loading_form = True
-        try:
-            self._load_active_profile_fields()
-        finally:
-            self._loading_form = False
-
-        self._clear_results()
-        self._log(f"Profil actif: {self.settings.active_profile}")
-
-    def _create_profile(self) -> None:
-        self._save_form_settings()
-
-        name, ok = QtWidgets.QInputDialog.getText(self, "Nouveau profil", "Nom du profil:")
-        if not ok:
-            return
-
-        profile_name = name.strip()
-        if not profile_name:
-            QtWidgets.QMessageBox.warning(self, "Profil", "Le nom du profil est vide.")
-            return
-
-        try:
-            add_profile(self.settings, profile_name, clone_current=True)
-            save_settings(self.settings)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Profil", str(exc))
-            return
-
-        self._loading_form = True
-        try:
-            self._populate_profiles_combo()
-            self._load_active_profile_fields()
-        finally:
-            self._loading_form = False
-
-        self._clear_results()
-        self._log(f"Profil créé: {profile_name}")
-
-    def _delete_profile(self) -> None:
-        self._save_form_settings()
-
-        profile_name = self.profile_combo.currentText().strip()
-        if not profile_name:
-            return
-
-        answer = QtWidgets.QMessageBox.question(
-            self,
-            "Supprimer profil",
-            f"Supprimer le profil '{profile_name}' ?",
-        )
-        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
-            return
-
-        try:
-            new_active = remove_profile(self.settings, profile_name)
-            save_settings(self.settings)
-        except Exception as exc:
-            QtWidgets.QMessageBox.warning(self, "Profil", str(exc))
-            return
-
-        self._loading_form = True
-        try:
-            self._populate_profiles_combo()
-            self._load_active_profile_fields()
-        finally:
-            self._loading_form = False
-
-        self._clear_results()
-        self._log(f"Profil supprimé: {profile_name} (actif: {new_active})")
 
     def _log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")

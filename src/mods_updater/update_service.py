@@ -463,10 +463,8 @@ def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | No
     lines.append(f"Version locale: {local.version}")
     lines.append(f"Statut: {_status_label(update_info.status)}")
     lines.append(f"Source: {update_info.provider or '-'}")
-    if update_info.match_confidence > 0 or update_info.match_score > 0:
-        lines.append(f"Confiance du matching: {update_info.match_confidence:.2f} (score {update_info.match_score:.2f})")
-    if update_info.match_note:
-        lines.append(f"Note de matching: {update_info.match_note}")
+    if update_info.matched_project_url:
+        lines.append(f"Page provider: {update_info.matched_project_url}")
     lines.append(f"Filtres changelog: {', '.join(sorted(filters)) if filters else 'aucun'}")
     lines.append("")
 

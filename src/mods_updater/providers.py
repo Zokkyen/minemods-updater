@@ -42,6 +42,22 @@ def _normalize_version(value: str) -> str:
     return cleaned
 
 
+def _semver_tokens(value: str) -> list[str]:
+    normalized = _normalize_version(value).split("+")[0]
+    tokens = re.findall(r"\d+(?:\.\d+){1,3}", normalized)
+
+    stripped = re.sub(r"^(fabric|forge|quilt|neoforge|minecraft|mc)[-_]+", "", normalized)
+    stripped = re.sub(r"[-_](fabric|forge|quilt|neoforge)$", "", stripped)
+    if stripped and stripped != normalized:
+        tokens.extend(re.findall(r"\d+(?:\.\d+){1,3}", stripped))
+
+    unique: list[str] = []
+    for token in tokens:
+        if token not in unique:
+            unique.append(token)
+    return unique
+
+
 def _normalized_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", value.strip().lower())
 
@@ -141,13 +157,46 @@ def _match_confidence(local_mod: LocalMod, candidate_slug: str, candidate_title:
 
 
 def _version_matches(local_version: str, remote_version: str) -> bool:
-    if _normalize_version(local_version) == _normalize_version(remote_version):
+    local_normalized = _normalize_version(local_version)
+    remote_normalized = _normalize_version(remote_version)
+
+    if local_normalized == remote_normalized:
         return True
 
     # Some jars expose versions like 1.2.3+mc1.21 while remote uses 1.2.3.
-    local_short = _normalize_version(local_version).split("+")[0]
-    remote_short = _normalize_version(remote_version).split("+")[0]
-    return bool(local_short and remote_short and local_short == remote_short)
+    local_short = local_normalized.split("+")[0]
+    remote_short = remote_normalized.split("+")[0]
+    if local_short and remote_short and local_short == remote_short:
+        return True
+
+    local_tokens = _semver_tokens(local_short)
+    remote_tokens = _semver_tokens(remote_short)
+    if local_tokens and remote_tokens and local_tokens[-1] == remote_tokens[-1]:
+        return True
+
+    overlap = set(local_tokens) & set(remote_tokens)
+    if not overlap:
+        return False
+
+    if any(token.count(".") >= 2 for token in overlap):
+        return True
+
+    return len(set(local_tokens)) == 1 and len(set(remote_tokens)) == 1
+
+
+def _build_project_url(provider: str, project_id: str, slug: str) -> str:
+    if provider == "Modrinth":
+        token = slug or project_id
+        return f"https://modrinth.com/mod/{token}" if token else ""
+
+    if provider == "CurseForge":
+        if slug:
+            return f"https://www.curseforge.com/minecraft/mc-mods/{slug}"
+        if project_id:
+            return f"https://www.curseforge.com/minecraft/mc-mods/search?search={project_id}"
+        return ""
+
+    return ""
 
 
 def _rank_versions(local_version: str, versions: list[RemoteVersion]) -> tuple[str, str, RemoteVersion | None, list[RemoteVersion]]:
@@ -321,6 +370,8 @@ class ModrinthProvider:
                 project_map[local_mod.mod_id] = project_id
 
             selected_candidate = next((candidate for candidate in match_candidates if candidate.accepted), None)
+            matched_slug = selected_candidate.slug if selected_candidate else ""
+            matched_url = _build_project_url(self.name, str(project_id), matched_slug)
 
             return UpdateInfo(
                 local_mod=local_mod,
@@ -332,6 +383,8 @@ class ModrinthProvider:
                 match_score=selected_candidate.score if selected_candidate else 0.0,
                 match_confidence=selected_candidate.confidence if selected_candidate else 0.0,
                 matched_project_id=str(project_id),
+                matched_project_slug=matched_slug,
+                matched_project_url=matched_url,
                 match_note=match_note or (selected_candidate.note if selected_candidate else ""),
                 match_candidates=match_candidates,
             )
@@ -587,6 +640,8 @@ class CurseForgeProvider:
                 project_map[local_mod.mod_id] = project_id
 
             selected_candidate = next((candidate for candidate in match_candidates if candidate.accepted), None)
+            matched_slug = selected_candidate.slug if selected_candidate else ""
+            matched_url = _build_project_url(self.name, str(project_id), matched_slug)
 
             return UpdateInfo(
                 local_mod=local_mod,
@@ -598,6 +653,8 @@ class CurseForgeProvider:
                 match_score=selected_candidate.score if selected_candidate else 0.0,
                 match_confidence=selected_candidate.confidence if selected_candidate else 0.0,
                 matched_project_id=str(project_id),
+                matched_project_slug=matched_slug,
+                matched_project_url=matched_url,
                 match_note=match_note or (selected_candidate.note if selected_candidate else ""),
                 match_candidates=match_candidates,
             )
@@ -867,6 +924,15 @@ def _attach_matching_diagnostics(selected: UpdateInfo, updates: list[UpdateInfo]
         selected.match_confidence = preferred.confidence
     if preferred and not selected.matched_project_id:
         selected.matched_project_id = preferred.project_id
+    if preferred and not selected.matched_project_slug:
+        selected.matched_project_slug = preferred.slug
+    if not selected.matched_project_url:
+        provider_name = selected.provider or (preferred.provider if preferred else "")
+        selected.matched_project_url = _build_project_url(
+            provider_name,
+            selected.matched_project_id,
+            selected.matched_project_slug,
+        )
 
     if not selected.match_note:
         notes = [f"{item.provider}: {item.match_note}" for item in updates if item.match_note]

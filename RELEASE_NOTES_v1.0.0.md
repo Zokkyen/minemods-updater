@@ -12,8 +12,11 @@ Première version publique de MineMods Updater, une application desktop Windows 
 - Cache local court pour les checks répétitifs (moins de requêtes inutiles à la suite).
 - Fallback automatique quand un mapping Modrinth est obsolète.
 - Scan auto après sélection du dossier mods.
-- Interface recentrée mods-first: tri de colonnes, filtres combinables, recherche, logs repliables.
+- Interface recentrée mods-first: tri de colonnes, redimensionnement manuel, filtres clairs, recherche, logs repliables.
+- Actions rapides: tout cocher / tout décocher sur les mods affichés.
+- Bouton pour ouvrir la page provider du mod sélectionné (Modrinth/CurseForge).
 - Matching acronymes amélioré pour les mods nommés de façon abrégée.
+- Comparaison de versions améliorée (ex: `0.8.2` = `fabric-0.8.2`).
 
 ## Points forts
 
@@ -21,13 +24,11 @@ Première version publique de MineMods Updater, une application desktop Windows 
 - Détection du contexte Minecraft (version + loader)
 - Vérification des mises à jour via Modrinth et CurseForge
 - Matching strict anti faux-positifs
-- Vue de confiance de matching avant validation
 - Mode dry-run pour simuler les opérations sans écrire sur disque
 - Mise à jour sélective ou globale
 - Backup automatique des anciens mods en .old
 - Filtres de changelog (breaking, fix, performance, other)
 - Export de rapport JSON et CSV (avant/après)
-- Gestion de profils multi-instances
 
 ## Distribution
 
@@ -46,10 +47,11 @@ Binaire Windows inclus:
 1. Sélectionner le dossier mods
 2. Vérifier la version Minecraft et le loader
 3. Scanner puis vérifier les mises à jour
-4. Consulter la confiance de matching
-5. Lancer un dry-run si besoin
-6. Appliquer les mises à jour
-7. Exporter le rapport
+4. Filtrer par état/source et sélectionner les mods affichés
+5. Ouvrir la page provider du mod si nécessaire
+6. Lancer un dry-run si besoin
+7. Appliquer les mises à jour
+8. Exporter le rapport
 
 ## Limitations connues
 

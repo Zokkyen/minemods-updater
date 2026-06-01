@@ -131,7 +131,6 @@ def build_full_report(settings: AppSettings, before_snapshot: dict | None, after
             "slug": APP_SLUG,
         },
         "context": {
-            "profile": settings.active_profile,
             "mods_directory": settings.mods_directory,
             "minecraft_version": settings.minecraft_version,
             "loader": settings.loader,
@@ -148,9 +147,9 @@ def build_full_report(settings: AppSettings, before_snapshot: dict | None, after
     }
 
 
-def make_report_basename(settings: AppSettings) -> str:
+def make_report_basename(_settings: AppSettings) -> str:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    return f"{APP_SLUG}-{_safe_slug(settings.active_profile)}-{stamp}"
+    return f"{APP_SLUG}-{stamp}"
 
 
 def export_report_json(report: dict, output_dir: Path, basename: str) -> Path:

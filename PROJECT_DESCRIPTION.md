@@ -14,7 +14,7 @@ MineMods Updater est une application desktop Windows qui simplifie la maintenanc
 
 Le logiciel scanne un dossier mods local (scan automatique dès sélection du dossier), détecte les versions actuelles, interroge Modrinth et CurseForge, puis propose des mises à jour compatibles avec ton environnement (version Minecraft + loader).
 
-Avant toute action, tu peux vérifier la confiance de matching pour éviter les faux-positifs. Ensuite, tu choisis entre simulation dry-run ou application réelle. Lors d'une mise à jour, l'ancien mod est sauvegardé automatiquement en .old, et un rapport complet JSON/CSV est généré.
+Avant toute action, tu peux filtrer clairement la liste (État + Source), sélectionner/désélectionner rapidement les mods visibles, puis ouvrir la page provider du mod sélectionné (Modrinth ou CurseForge). Ensuite, tu choisis entre simulation dry-run ou application réelle. Lors d'une mise à jour, l'ancien mod est sauvegardé automatiquement en .old, et un rapport complet JSON/CSV est généré.
 
 La vérification des mises à jour est optimisée pour les modpacks volumineux: traitement parallèle des mods, cache local court sur les checks récents, et fallback automatique si un mapping provider est devenu obsolète.
 
@@ -23,6 +23,7 @@ La vérification des mises à jour est optimisée pour les modpacks volumineux: 
 - Évite les updates incompatibles
 - Réduit le risque de casser un modpack
 - Accélère les checks répétés grâce au cache local
+- Simplifie la sélection des mods à mettre à jour avec les actions sur lignes affichées
 - Garde une trace des opérations
 - Permet une validation avant écriture
 

@@ -55,6 +55,8 @@ class UpdateInfo:
     match_score: float = 0.0
     match_confidence: float = 0.0
     matched_project_id: str = ""
+    matched_project_slug: str = ""
+    matched_project_url: str = ""
     match_note: str = ""
     match_candidates: list[MatchCandidate] = field(default_factory=list)
 

@@ -10,15 +10,16 @@ MineMods Updater est un logiciel desktop Windows qui vérifie et applique les mi
 - Vérification des mises à jour via Modrinth et CurseForge
 - Vérification accélérée: traitement parallèle + cache local court des checks récents
 - Matching strict anti faux-positifs
-- Vue de confiance de matching (scores/candidats avant validation)
 - Mode **dry-run** (simulation sans écrire sur disque)
 - Mise à jour sélective ou globale
+- Actions rapides: tout cocher / tout décocher sur les lignes affichées
 - Backup automatique des anciens mods en `.old`
 - Changelog filtré (breaking/fix/performance/other)
-- Tableau mods orienté productivité: tri colonnes + filtres combinables + recherche texte
+- Tableau mods orienté productivité: tri colonnes + redimensionnement manuel + recherche texte
+- Filtres clarifiés: un sélecteur État + un sélecteur Source
+- Bouton direct pour ouvrir la page du mod associé (Modrinth / CurseForge)
 - Logs repliables pour laisser plus de place à la liste des mods
 - Export de rapport **JSON + CSV** (avant/après opération)
-- Profils multi-instances Minecraft
 
 ## Captures (à ajouter)
 
@@ -26,7 +27,7 @@ Ajoute tes captures dans un dossier `assets/`, puis dé-commente ces lignes:
 
 ```md
 ![Écran principal](assets/main-window.png)
-![Confiance matching](assets/matching-confidence.png)
+![Filtres et sélection visible](assets/filters-selection.png)
 ![Rapport exporté](assets/report-export.png)
 ```
 
@@ -60,10 +61,11 @@ Sortie attendue:
 3. Activer les providers voulus (Modrinth/CurseForge)
 4. Le scan démarre automatiquement après sélection du dossier (sinon bouton `Scanner`)
 5. Lancer `Vérifier les mises à jour`
-6. Consulter `Confiance matching` avant validation
-7. Activer `Dry-run` pour simuler si besoin
-8. Lancer la mise à jour (sélection ou globale)
-9. Exporter le rapport JSON/CSV
+6. Utiliser les filtres `État` et `Source`, puis `Tout cocher (affichés)` si besoin
+7. Vérifier les détails d'un mod et ouvrir sa page provider depuis le panneau de droite
+8. Activer `Dry-run` pour simuler si besoin
+9. Lancer la mise à jour (sélection ou globale)
+10. Exporter le rapport JSON/CSV
 
 ## Performance et réactivité
 
@@ -82,7 +84,7 @@ Bonnes pratiques:
 
 Le rapport inclut:
 
-- Contexte d'exécution (profil, loader, version, providers)
+- Contexte d'exécution (loader, version, providers)
 - Snapshot avant (versions locales + statuts + matching)
 - Snapshot après (updates appliquées/simulées + erreurs)
 
