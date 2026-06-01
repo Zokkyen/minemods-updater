@@ -66,6 +66,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.modrinth = ModrinthProvider()
 
         self.local_mods: list[LocalMod] = []
+        self.local_mods_by_path: dict[str, LocalMod] = {}
         self.update_infos: list[UpdateInfo] = []
         self.before_snapshot: dict | None = None
         self.last_report: dict | None = None
@@ -209,16 +210,13 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.addWidget(self.update_selected_button, 5, 3)
         controls_layout.addWidget(self.update_all_button, 5, 4)
 
+        self.show_logs_checkbox = QtWidgets.QCheckBox("Afficher les logs")
+        self.show_logs_checkbox.setChecked(False)
+        self.show_logs_checkbox.stateChanged.connect(self._on_show_logs_changed)
+
+        controls_layout.addWidget(self.show_logs_checkbox, 6, 2)
         controls_layout.addWidget(self.matching_button, 6, 3)
         controls_layout.addWidget(self.export_report_button, 6, 4)
-
-        self.steps_hint_label = QtWidgets.QLabel(
-            "Étapes conseillées: 1) Scanner, 2) Vérifier les mises à jour, 3) Contrôler la confiance du matching, "
-            "4) Simuler (dry-run) ou appliquer, 5) Exporter le rapport."
-        )
-        self.steps_hint_label.setObjectName("stepsHint")
-        self.steps_hint_label.setWordWrap(True)
-        controls_layout.addWidget(self.steps_hint_label, 7, 0, 1, 5)
 
         root_layout.addWidget(controls)
 
@@ -228,6 +226,53 @@ class MainWindow(QtWidgets.QMainWindow):
         table_card.setObjectName("tableCard")
         table_layout = QtWidgets.QVBoxLayout(table_card)
         table_layout.setContentsMargins(12, 12, 12, 12)
+
+        table_filters = QtWidgets.QHBoxLayout()
+        table_filters.setSpacing(8)
+
+        self.mods_search_input = QtWidgets.QLineEdit()
+        self.mods_search_input.setPlaceholderText("Rechercher un mod (nom, ID, fichier)")
+        self.mods_search_input.textChanged.connect(self._on_table_filter_changed)
+
+        self.status_filter_available = QtWidgets.QCheckBox("Dispo")
+        self.status_filter_uptodate = QtWidgets.QCheckBox("À jour")
+        self.status_filter_notfound = QtWidgets.QCheckBox("Introuv.")
+        self.status_filter_error = QtWidgets.QCheckBox("Erreur")
+        self.status_filter_scanned = QtWidgets.QCheckBox("Scanné")
+
+        for checkbox in [
+            self.status_filter_available,
+            self.status_filter_uptodate,
+            self.status_filter_notfound,
+            self.status_filter_error,
+            self.status_filter_scanned,
+        ]:
+            checkbox.setChecked(True)
+            checkbox.stateChanged.connect(self._on_table_filter_changed)
+
+        self.source_filter_modrinth = QtWidgets.QCheckBox("Modrinth")
+        self.source_filter_curseforge = QtWidgets.QCheckBox("CurseForge")
+        self.source_filter_other = QtWidgets.QCheckBox("Autre")
+
+        for checkbox in [self.source_filter_modrinth, self.source_filter_curseforge, self.source_filter_other]:
+            checkbox.setChecked(True)
+            checkbox.stateChanged.connect(self._on_table_filter_changed)
+
+        table_filters.addWidget(QtWidgets.QLabel("Recherche:"))
+        table_filters.addWidget(self.mods_search_input, 2)
+        table_filters.addWidget(QtWidgets.QLabel("État:"))
+        table_filters.addWidget(self.status_filter_available)
+        table_filters.addWidget(self.status_filter_uptodate)
+        table_filters.addWidget(self.status_filter_notfound)
+        table_filters.addWidget(self.status_filter_error)
+        table_filters.addWidget(self.status_filter_scanned)
+        table_filters.addWidget(QtWidgets.QLabel("Source:"))
+        table_filters.addWidget(self.source_filter_modrinth)
+        table_filters.addWidget(self.source_filter_curseforge)
+        table_filters.addWidget(self.source_filter_other)
+        table_filters.addStretch(1)
+
+        table_layout.addLayout(table_filters)
 
         self.mods_table = QtWidgets.QTableWidget(0, 9)
         self.mods_table.setHorizontalHeaderLabels(
@@ -248,6 +293,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mods_table.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectRows)
         self.mods_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.mods_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.mods_table.setSortingEnabled(True)
         self.mods_table.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
         self.mods_table.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeMode.Stretch)
         self.mods_table.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeMode.ResizeToContents)
@@ -295,26 +341,37 @@ class MainWindow(QtWidgets.QMainWindow):
 
         content_splitter.addWidget(table_card)
         content_splitter.addWidget(detail_card)
-        content_splitter.setStretchFactor(0, 3)
+        content_splitter.setStretchFactor(0, 4)
         content_splitter.setStretchFactor(1, 2)
 
         root_layout.addWidget(content_splitter, 1)
 
-        logs_card = QtWidgets.QFrame()
-        logs_card.setObjectName("logsCard")
-        logs_layout = QtWidgets.QVBoxLayout(logs_card)
+        self.logs_card = QtWidgets.QFrame()
+        self.logs_card.setObjectName("logsCard")
+        logs_layout = QtWidgets.QVBoxLayout(self.logs_card)
         logs_layout.setContentsMargins(12, 12, 12, 12)
 
         logs_title = QtWidgets.QLabel("Logs")
         logs_title.setObjectName("panelTitle")
         self.logs_text = QtWidgets.QPlainTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setMaximumHeight(170)
+        self.logs_text.setMaximumHeight(130)
 
         logs_layout.addWidget(logs_title)
         logs_layout.addWidget(self.logs_text)
 
-        root_layout.addWidget(logs_card)
+        root_layout.addWidget(self.logs_card)
+
+        credit = QtWidgets.QLabel(
+            'Développé par <a href="https://github.com/Zokkyen/minemods-updater">Zokkyen</a> © 2026'
+        )
+        credit.setObjectName("creditLabel")
+        credit.setOpenExternalLinks(True)
+        credit.setTextFormat(QtCore.Qt.TextFormat.RichText)
+        credit.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        root_layout.addWidget(credit)
+
+        self.logs_card.setVisible(False)
 
         self.setCentralWidget(root)
 
@@ -358,12 +415,14 @@ class MainWindow(QtWidgets.QMainWindow):
                 font-weight: 600;
                 font-size: 10.8pt;
             }
-            QLabel#stepsHint {
-                color: #c6e9ff;
-                background: rgba(23, 50, 74, 0.65);
-                border: 1px solid rgba(111, 198, 233, 0.25);
-                border-radius: 8px;
-                padding: 8px 10px;
+            QLabel#creditLabel {
+                color: #7fa6be;
+                font-size: 9pt;
+                padding-right: 4px;
+            }
+            QLabel#creditLabel a {
+                color: #9fdfff;
+                text-decoration: none;
             }
             QLabel {
                 color: #dceffe;
@@ -544,6 +603,8 @@ class MainWindow(QtWidgets.QMainWindow):
         if folder:
             self.mods_dir_input.setText(folder)
             self._save_form_settings()
+            # Automatically trigger a scan after selecting a mods folder.
+            self._scan_mods()
 
     def _on_curseforge_toggle(self) -> None:
         enabled = self.curseforge_checkbox.isChecked()
@@ -564,6 +625,80 @@ class MainWindow(QtWidgets.QMainWindow):
         self._save_form_settings()
         self._refresh_details_from_selection()
 
+    def _on_table_filter_changed(self) -> None:
+        self._apply_table_filters()
+
+    def _selected_status_filters(self) -> set[str]:
+        selected: set[str] = set()
+        if self.status_filter_available.isChecked():
+            selected.add("update_available")
+        if self.status_filter_uptodate.isChecked():
+            selected.add("up_to_date")
+        if self.status_filter_notfound.isChecked():
+            selected.add("not_found")
+        if self.status_filter_error.isChecked():
+            selected.add("error")
+        if self.status_filter_scanned.isChecked():
+            selected.add("scanned")
+        return selected
+
+    def _selected_source_filters(self) -> set[str]:
+        selected: set[str] = set()
+        if self.source_filter_modrinth.isChecked():
+            selected.add("modrinth")
+        if self.source_filter_curseforge.isChecked():
+            selected.add("curseforge")
+        if self.source_filter_other.isChecked():
+            selected.add("other")
+        return selected
+
+    def _apply_table_filters(self) -> None:
+        query = self.mods_search_input.text().strip().lower()
+        status_filters = self._selected_status_filters()
+        source_filters = self._selected_source_filters()
+
+        visible_row = -1
+        for row in range(self.mods_table.rowCount()):
+            name_item = self.mods_table.item(row, 1)
+            id_item = self.mods_table.item(row, 2)
+            status_item = self.mods_table.item(row, 5)
+            source_item = self.mods_table.item(row, 6)
+
+            if not name_item or not id_item or not status_item or not source_item:
+                self.mods_table.setRowHidden(row, True)
+                continue
+
+            status_key = str(status_item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+            source_key = str(source_item.data(QtCore.Qt.ItemDataRole.UserRole) or "other")
+
+            haystack = " ".join(
+                [
+                    name_item.text().lower(),
+                    id_item.text().lower(),
+                    str(name_item.data(QtCore.Qt.ItemDataRole.UserRole + 1) or "").lower(),
+                ]
+            )
+
+            matches_query = not query or query in haystack
+            matches_status = not status_filters or status_key in status_filters
+            matches_source = not source_filters or source_key in source_filters
+
+            hidden = not (matches_query and matches_status and matches_source)
+            self.mods_table.setRowHidden(row, hidden)
+
+            if not hidden and visible_row == -1:
+                visible_row = row
+
+        if visible_row >= 0:
+            selected_rows = self.mods_table.selectionModel().selectedRows()
+            if not selected_rows or self.mods_table.isRowHidden(selected_rows[0].row()):
+                self.mods_table.selectRow(visible_row)
+        else:
+            self.details_text.clear()
+
+    def _on_show_logs_changed(self) -> None:
+        self.logs_card.setVisible(self.show_logs_checkbox.isChecked())
+
     def _set_busy(self, busy: bool, label: str = "") -> None:
         self._busy = busy
         self.scan_button.setEnabled(not busy)
@@ -578,6 +713,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.profile_new_button.setEnabled(not busy)
         self.profile_delete_button.setEnabled(not busy)
         self.dry_run_checkbox.setEnabled(not busy)
+        self.show_logs_checkbox.setEnabled(not busy)
 
         self.busy_label.setText(label if busy and label else "Prêt")
         if busy:
@@ -731,19 +867,35 @@ class MainWindow(QtWidgets.QMainWindow):
         self._run_updates(selected)
 
     def _collect_target_updates(self, only_checked: bool) -> list[UpdateInfo]:
-        targets: list[UpdateInfo] = []
-        by_path = {info.local_mod.path: info for info in self.update_infos}
+        if not only_checked:
+            return [
+                info
+                for info in self.update_infos
+                if info.status == "update_available" and info.latest is not None
+            ]
 
-        for row, local in enumerate(self.local_mods):
-            info = by_path.get(local.path)
+        targets: list[UpdateInfo] = []
+        by_path = {str(info.local_mod.path): info for info in self.update_infos}
+        seen: set[str] = set()
+
+        for row in range(self.mods_table.rowCount()):
+            check_item = self.mods_table.item(row, 0)
+            mod_item = self.mods_table.item(row, 1)
+            if not check_item or not mod_item:
+                continue
+
+            if check_item.checkState() != QtCore.Qt.CheckState.Checked:
+                continue
+
+            mod_path = str(mod_item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+            if not mod_path or mod_path in seen:
+                continue
+
+            info = by_path.get(mod_path)
             if not info or info.status != "update_available" or info.latest is None:
                 continue
 
-            if only_checked:
-                check_item = self.mods_table.item(row, 0)
-                if not check_item or check_item.checkState() != QtCore.Qt.CheckState.Checked:
-                    continue
-
+            seen.add(mod_path)
             targets.append(info)
 
         return targets
@@ -804,6 +956,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self._run_task(work, done, busy_text)
 
     def _populate_table(self) -> None:
+        self.local_mods_by_path = {str(mod.path): mod for mod in self.local_mods}
+        self.mods_table.setSortingEnabled(False)
         self.mods_table.setRowCount(0)
         by_path = {info.local_mod.path: info for info in self.update_infos}
         status_labels = {
@@ -825,6 +979,8 @@ class MainWindow(QtWidgets.QMainWindow):
                 latest_text = info.latest.version_number if info.latest else "-"
                 provider = info.provider or "-"
 
+            source_key = provider.lower() if provider in {"Modrinth", "CurseForge"} else "other"
+
             status_text = status_labels.get(status_key, status_key)
 
             self.mods_table.insertRow(row)
@@ -839,13 +995,26 @@ class MainWindow(QtWidgets.QMainWindow):
                 check_item.setCheckState(QtCore.Qt.CheckState.Unchecked)
             check_item.setFlags(flags)
 
+            check_item.setData(QtCore.Qt.ItemDataRole.UserRole, str(local.path))
             self.mods_table.setItem(row, 0, check_item)
-            self.mods_table.setItem(row, 1, QtWidgets.QTableWidgetItem(local.name))
+
+            mod_item = QtWidgets.QTableWidgetItem(local.name)
+            mod_item.setData(QtCore.Qt.ItemDataRole.UserRole, str(local.path))
+            mod_item.setData(QtCore.Qt.ItemDataRole.UserRole + 1, local.path.name)
+            self.mods_table.setItem(row, 1, mod_item)
+
             self.mods_table.setItem(row, 2, QtWidgets.QTableWidgetItem(local.mod_id))
             self.mods_table.setItem(row, 3, QtWidgets.QTableWidgetItem(local.version))
             self.mods_table.setItem(row, 4, QtWidgets.QTableWidgetItem(latest_text))
-            self.mods_table.setItem(row, 5, QtWidgets.QTableWidgetItem(status_text))
-            self.mods_table.setItem(row, 6, QtWidgets.QTableWidgetItem(provider))
+
+            status_item = QtWidgets.QTableWidgetItem(status_text)
+            status_item.setData(QtCore.Qt.ItemDataRole.UserRole, status_key)
+            self.mods_table.setItem(row, 5, status_item)
+
+            source_item = QtWidgets.QTableWidgetItem(provider)
+            source_item.setData(QtCore.Qt.ItemDataRole.UserRole, source_key)
+            self.mods_table.setItem(row, 6, source_item)
+
             self.mods_table.setItem(row, 7, QtWidgets.QTableWidgetItem(local.loader_hint))
             self.mods_table.setItem(row, 8, QtWidgets.QTableWidgetItem(local.path.name))
 
@@ -855,6 +1024,10 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mods_table.selectRow(0)
         else:
             self.details_text.setPlainText("Aucun mod détecté.")
+
+        self.mods_table.setSortingEnabled(True)
+        self.mods_table.sortItems(1, QtCore.Qt.SortOrder.AscendingOrder)
+        self._apply_table_filters()
 
     def _colorize_status_row(self, row: int, status: str) -> None:
         status_colors = {
@@ -879,11 +1052,21 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         row = selected_rows[0].row()
-        if row < 0 or row >= len(self.local_mods):
+        if row < 0:
             self.details_text.clear()
             return
 
-        local = self.local_mods[row]
+        mod_item = self.mods_table.item(row, 1)
+        if mod_item is None:
+            self.details_text.clear()
+            return
+
+        mod_path = str(mod_item.data(QtCore.Qt.ItemDataRole.UserRole) or "")
+        local = self.local_mods_by_path.get(mod_path)
+        if local is None:
+            self.details_text.clear()
+            return
+
         info = next((item for item in self.update_infos if item.local_mod.path == local.path), None)
 
         if not info:

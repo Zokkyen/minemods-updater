@@ -51,6 +51,42 @@ def _token_set(value: str) -> set[str]:
     return {token for token in tokens if len(token) >= 2}
 
 
+def _acronym(value: str) -> str:
+    tokens = re.findall(r"[a-z0-9]+", value.lower())
+    if not tokens:
+        return ""
+    return "".join(token[0] for token in tokens if token)
+
+
+def _strip_version_suffix(value: str) -> str:
+    stripped = re.sub(r"[-_]?v?\d+(?:\.\d+)+(?:[-_.a-z0-9]*)?$", "", value, flags=re.IGNORECASE)
+    return stripped.strip("-_. ")
+
+
+def _query_candidates(local_mod: LocalMod) -> list[str]:
+    raw_values = [
+        local_mod.mod_id,
+        local_mod.name,
+        local_mod.path.stem,
+        _strip_version_suffix(local_mod.path.stem),
+        _acronym(local_mod.name),
+    ]
+
+    seen: set[str] = set()
+    queries: list[str] = []
+    for value in raw_values:
+        query = value.strip()
+        if len(query) < 2:
+            continue
+        normalized = _normalized_text(query)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        queries.append(query)
+
+    return queries
+
+
 def _string_similarity(left: str, right: str) -> float:
     a = _normalized_text(left)
     b = _normalized_text(right)
@@ -86,8 +122,22 @@ def _match_confidence(local_mod: LocalMod, candidate_slug: str, candidate_title:
         default=0.0,
     )
 
+    local_keys = {_normalized_text(value) for value in local_values if value}
+    remote_keys = {_normalized_text(candidate_slug), _normalized_text(candidate_title)}
+
+    local_acronym = _acronym(local_mod.name)
+    remote_acronym = _acronym(candidate_title)
+
+    acronym_bonus = 0.0
+    if local_acronym and remote_acronym and local_acronym == remote_acronym:
+        acronym_bonus = max(acronym_bonus, 0.18)
+    if remote_acronym and remote_acronym in local_keys:
+        acronym_bonus = max(acronym_bonus, 0.22)
+    if local_acronym and local_acronym in remote_keys:
+        acronym_bonus = max(acronym_bonus, 0.22)
+
     # Weight token overlap higher to avoid matching stylistically similar but semantically different mods.
-    return max(best_string * 0.9, best_token * 1.05)
+    return min(1.0, max(best_string * 0.9, best_token * 1.05) + acronym_bonus)
 
 
 def _version_matches(local_version: str, remote_version: str) -> bool:
@@ -277,7 +327,7 @@ class ModrinthProvider:
         strict_matching: bool,
     ) -> tuple[dict | None, list[MatchCandidate], str]:
         candidates: list[dict] = []
-        for query in [local_mod.mod_id, local_mod.name]:
+        for query in _query_candidates(local_mod):
             if not query:
                 continue
             hits = self._search_projects(query=query, minecraft_version=minecraft_version, loader=loader)
@@ -362,6 +412,8 @@ class ModrinthProvider:
         title = str(hit.get("title", "")).lower()
         mod_id = local_mod.mod_id.lower()
         name = local_mod.name.lower()
+        title_acronym = _acronym(title)
+        local_stem = _normalized_text(local_mod.path.stem)
 
         if slug == mod_id:
             score += 100
@@ -371,6 +423,10 @@ class ModrinthProvider:
             score += 40
         if name and name in title:
             score += 30
+        if title_acronym and title_acronym == mod_id:
+            score += 65
+        if title_acronym and local_stem and title_acronym == local_stem:
+            score += 50
 
         score += int(hit.get("downloads", 0) / 10000)
         confidence = _match_confidence(local_mod, slug, title)
@@ -613,6 +669,8 @@ class CurseForgeProvider:
         slug = str(hit.get("slug", "")).lower()
         name = str(hit.get("name", "")).lower()
         mod_id = local_mod.mod_id.lower()
+        name_acronym = _acronym(name)
+        local_stem = _normalized_text(local_mod.path.stem)
 
         if slug == mod_id:
             score += 100
@@ -620,6 +678,10 @@ class CurseForgeProvider:
             score += 45
         if local_mod.name.lower() in name:
             score += 30
+        if name_acronym and name_acronym == mod_id:
+            score += 65
+        if name_acronym and local_stem and name_acronym == local_stem:
+            score += 50
         score += int(hit.get("downloadCount", 0) / 50000)
         confidence = _match_confidence(local_mod, slug, name)
         score += confidence * 120
@@ -686,9 +748,17 @@ def _select_primary_file(files: Iterable[dict]) -> dict | None:
 
 
 def _slug_candidates(local_mod: LocalMod) -> list[str]:
-    raw = [local_mod.mod_id, local_mod.name]
+    raw = [
+        local_mod.mod_id,
+        local_mod.name,
+        local_mod.path.stem,
+        _strip_version_suffix(local_mod.path.stem),
+        _acronym(local_mod.name),
+    ]
     candidates: list[str] = []
     for value in raw:
+        if not value:
+            continue
         slug = re.sub(r"[^a-z0-9-]", "-", value.lower())
         slug = re.sub(r"-+", "-", slug).strip("-")
         if slug and slug not in candidates:
