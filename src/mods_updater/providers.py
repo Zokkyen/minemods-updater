@@ -209,7 +209,7 @@ class ModrinthProvider:
                     return UpdateInfo(
                         local_mod=local_mod,
                         status="not_found",
-                        message="Aucun matching fiable trouve sur Modrinth.",
+                        message="Aucun matching fiable trouvé sur Modrinth.",
                         provider=self.name,
                         match_note=match_note,
                         match_candidates=match_candidates,
@@ -220,7 +220,7 @@ class ModrinthProvider:
                 return UpdateInfo(
                     local_mod=local_mod,
                     status="not_found",
-                    message="Modrinth project not found.",
+                    message="Projet Modrinth introuvable.",
                     provider=self.name,
                     match_note=match_note,
                     match_candidates=match_candidates,
@@ -284,7 +284,7 @@ class ModrinthProvider:
             candidates.extend(hits)
 
         if not candidates:
-            return None, [], "Aucun resultat de recherche provider."
+            return None, [], "Aucun résultat de recherche provider."
 
         unique_by_project = {item.get("project_id"): item for item in candidates if item.get("project_id")}
         scored: list[tuple[float, float, dict]] = []
@@ -294,7 +294,7 @@ class ModrinthProvider:
 
         scored.sort(key=lambda item: item[0], reverse=True)
         if not scored:
-            return None, [], "Aucun candidat score apres filtrage."
+            return None, [], "Aucun candidat score après filtrage."
 
         ranked_candidates: list[MatchCandidate] = []
         for rank, (score, confidence, item) in enumerate(scored[:12], start=1):
@@ -326,7 +326,7 @@ class ModrinthProvider:
                     ranked_candidates[0].note = "Ambigu avec un autre projet proche."
                 if len(ranked_candidates) > 1:
                     ranked_candidates[1].note = "Ambigu avec le meilleur candidat."
-                return None, ranked_candidates, "Resultat ambigu entre plusieurs projets."
+                return None, ranked_candidates, "Résultat ambigu entre plusieurs projets."
 
         selected_project = str(best_item.get("project_id", ""))
         for candidate in ranked_candidates:
@@ -455,7 +455,7 @@ class CurseForgeProvider:
             return UpdateInfo(
                 local_mod=local_mod,
                 status="not_found",
-                message="CurseForge API key is missing.",
+                message="Clé API CurseForge manquante.",
                 provider=self.name,
                 match_note="API key CurseForge absente.",
             )
@@ -486,7 +486,7 @@ class CurseForgeProvider:
                     return UpdateInfo(
                         local_mod=local_mod,
                         status="not_found",
-                        message="Aucun matching fiable trouve sur CurseForge.",
+                        message="Aucun matching fiable trouvé sur CurseForge.",
                         provider=self.name,
                         match_note=match_note,
                         match_candidates=match_candidates,
@@ -544,7 +544,7 @@ class CurseForgeProvider:
             candidates.extend(payload)
 
         if not candidates:
-            return None, [], "Aucun resultat de recherche provider."
+            return None, [], "Aucun résultat de recherche provider."
 
         unique_by_project: dict[int, dict] = {}
         for item in candidates:
@@ -565,7 +565,7 @@ class CurseForgeProvider:
 
         scored.sort(key=lambda item: item[0], reverse=True)
         if not scored:
-            return None, [], "Aucun candidat score apres filtrage."
+            return None, [], "Aucun candidat score après filtrage."
 
         ranked_candidates: list[MatchCandidate] = []
         for rank, (score, confidence, item) in enumerate(scored[:12], start=1):
@@ -597,7 +597,7 @@ class CurseForgeProvider:
                     ranked_candidates[0].note = "Ambigu avec un autre projet proche."
                 if len(ranked_candidates) > 1:
                     ranked_candidates[1].note = "Ambigu avec le meilleur candidat."
-                return None, ranked_candidates, "Resultat ambigu entre plusieurs projets."
+                return None, ranked_candidates, "Résultat ambigu entre plusieurs projets."
 
         selected_project = str(best_item.get("id", ""))
         for candidate in ranked_candidates:
@@ -699,7 +699,7 @@ def _slug_candidates(local_mod: LocalMod) -> list[str]:
 def pick_best_update(local_mod: LocalMod, updates: list[UpdateInfo]) -> UpdateInfo:
     """Select the final provider result and attach matching diagnostics."""
     if not updates:
-        return UpdateInfo(local_mod=local_mod, status="not_found", message="No active provider.")
+        return UpdateInfo(local_mod=local_mod, status="not_found", message="Aucun provider actif.")
 
     update_candidates = [item for item in updates if item.status == "update_available" and item.latest]
     if update_candidates:

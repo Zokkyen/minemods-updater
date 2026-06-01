@@ -245,6 +245,16 @@ def summarize_changelog_categories(update_info: UpdateInfo) -> dict[str, int]:
     return summary
 
 
+def _status_label(status: str) -> str:
+    labels = {
+        "update_available": "Mise à jour disponible",
+        "up_to_date": "À jour",
+        "not_found": "Introuvable",
+        "error": "Erreur",
+    }
+    return labels.get(status, status)
+
+
 def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | None = None) -> str:
     """Build a readable changelog summary for the details panel in the UI."""
     lines: list[str] = []
@@ -253,21 +263,21 @@ def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | No
     local = update_info.local_mod
     lines.append(f"Mod: {local.name} ({local.mod_id})")
     lines.append(f"Version locale: {local.version}")
-    lines.append(f"Statut: {update_info.status}")
-    lines.append(f"Provider: {update_info.provider or '-'}")
+    lines.append(f"Statut: {_status_label(update_info.status)}")
+    lines.append(f"Source: {update_info.provider or '-'}")
     if update_info.match_confidence > 0 or update_info.match_score > 0:
-        lines.append(f"Confiance matching: {update_info.match_confidence:.2f} (score {update_info.match_score:.2f})")
+        lines.append(f"Confiance du matching: {update_info.match_confidence:.2f} (score {update_info.match_score:.2f})")
     if update_info.match_note:
-        lines.append(f"Note matching: {update_info.match_note}")
-    lines.append(f"Filtres changelog: {', '.join(sorted(filters)) if filters else 'none'}")
+        lines.append(f"Note de matching: {update_info.match_note}")
+    lines.append(f"Filtres changelog: {', '.join(sorted(filters)) if filters else 'aucun'}")
     lines.append("")
 
     if update_info.latest is None:
         lines.append(update_info.message)
         return "\n".join(lines)
 
-    lines.append(f"Derniere version: {update_info.latest.version_number}")
-    lines.append(f"Publiee: {update_info.latest.published_at.isoformat()}")
+    lines.append(f"Dernière version: {update_info.latest.version_number}")
+    lines.append(f"Publiée: {update_info.latest.published_at.isoformat()}")
     lines.append("")
 
     versions_to_describe = list(reversed(update_info.intermediate_versions))
@@ -279,12 +289,12 @@ def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | No
         return "\n".join(lines)
 
     category_summary = summarize_changelog_categories(update_info)
-    lines.append("Resume categories detectees:")
+    lines.append("Résumé des catégories détectées:")
     for category in CHANGELOG_CATEGORY_ORDER:
         lines.append(f"- {category}: {category_summary.get(category, 0)}")
 
     lines.append("")
-    lines.append("Versions intermediaires detectees:")
+    lines.append("Versions intermédiaires détectées:")
     for version in versions_to_describe:
         lines.append("")
         lines.append(f"- {version.version_number} ({version.published_at.date().isoformat()})")
@@ -309,7 +319,7 @@ def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | No
                     lines.append(f"    - {entry}")
 
             if not matched_any:
-                lines.append("  Aucun element du changelog ne correspond aux filtres actifs.")
+                lines.append("  Aucun élément du changelog ne correspond aux filtres actifs.")
         else:
             lines.append("  Changelog non fourni par le provider.")
 

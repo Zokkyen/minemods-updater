@@ -95,14 +95,14 @@ class MainWindow(QtWidgets.QMainWindow):
         title = QtWidgets.QLabel(APP_NAME)
         title.setObjectName("heroTitle")
         subtitle = QtWidgets.QLabel(
-            "Scan .jar, matching score provider, simulation dry-run, export de rapports et backup .old"
+            "Scan des .jar, score de matching providers, simulation dry-run, export de rapports et backup .old"
         )
         subtitle.setObjectName("heroSubtitle")
         subtitle.setWordWrap(True)
         title_block.addWidget(title)
         title_block.addWidget(subtitle)
 
-        self.busy_label = QtWidgets.QLabel("Pret")
+        self.busy_label = QtWidgets.QLabel("Prêt")
         self.busy_label.setObjectName("busyBadge")
         self.busy_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
@@ -132,7 +132,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mc_version_combo = QtWidgets.QComboBox()
         self.mc_version_combo.setEditable(True)
         self.mc_version_combo.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-        refresh_versions_button = QtWidgets.QPushButton("Maj versions MC")
+        refresh_versions_button = QtWidgets.QPushButton("Actualiser versions MC")
         refresh_versions_button.clicked.connect(lambda: self._refresh_minecraft_versions(background=True))
 
         self.loader_combo = QtWidgets.QComboBox()
@@ -153,26 +153,34 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self.strict_matching_checkbox = QtWidgets.QCheckBox("Matching strict anti faux-positifs")
         self.strict_matching_checkbox.setChecked(True)
-        self.dry_run_checkbox = QtWidgets.QCheckBox("Dry-run (simulation sans ecriture)")
+        self.dry_run_checkbox = QtWidgets.QCheckBox("Dry-run (simulation sans écriture)")
         self.dry_run_checkbox.setChecked(False)
 
-        self.auto_detect_button = QtWidgets.QPushButton("Auto detect")
+        self.auto_detect_button = QtWidgets.QPushButton("Auto-détecter")
         self.auto_detect_button.clicked.connect(self._autodetect_context)
         self.scan_button = QtWidgets.QPushButton("Scanner")
         self.scan_button.clicked.connect(self._scan_mods)
-        self.check_updates_button = QtWidgets.QPushButton("Verifier updates")
+        self.check_updates_button = QtWidgets.QPushButton("Vérifier les mises à jour")
         self.check_updates_button.clicked.connect(self._check_updates)
 
-        self.update_selected_button = QtWidgets.QPushButton("Mettre a jour selection")
+        self.update_selected_button = QtWidgets.QPushButton("Mettre à jour la sélection")
         self.update_selected_button.clicked.connect(self._update_selected_mods)
-        self.update_all_button = QtWidgets.QPushButton("Tout mettre a jour")
+        self.update_all_button = QtWidgets.QPushButton("Tout mettre à jour")
         self.update_all_button.clicked.connect(self._update_all_mods)
-        self.matching_button = QtWidgets.QPushButton("Confiance matching")
+        self.matching_button = QtWidgets.QPushButton("Confiance du matching")
         self.matching_button.clicked.connect(self._show_matching_confidence_dialog)
-        self.export_report_button = QtWidgets.QPushButton("Exporter rapport JSON/CSV")
+        self.export_report_button = QtWidgets.QPushButton("Exporter le rapport JSON/CSV")
         self.export_report_button.clicked.connect(self._export_report)
 
-        controls_layout.addWidget(QtWidgets.QLabel("Profil instance"), 0, 0)
+        self.scan_button.setToolTip("Étape 1: scanner les mods présents dans le dossier.")
+        self.check_updates_button.setToolTip("Étape 2: vérifier les mises à jour disponibles sur les providers.")
+        self.matching_button.setToolTip("Étape 3: contrôler les scores de matching avant validation.")
+        self.dry_run_checkbox.setToolTip("Option: simuler les actions sans modifier les fichiers .jar.")
+        self.update_selected_button.setToolTip("Étape 4: appliquer uniquement les mods cochés.")
+        self.update_all_button.setToolTip("Étape 4: appliquer toutes les mises à jour disponibles.")
+        self.export_report_button.setToolTip("Étape 5: exporter un rapport JSON/CSV avant ou après opération.")
+
+        controls_layout.addWidget(QtWidgets.QLabel("Profil d'instance"), 0, 0)
         controls_layout.addWidget(self.profile_combo, 0, 1, 1, 2)
         controls_layout.addWidget(self.profile_new_button, 0, 3)
         controls_layout.addWidget(self.profile_delete_button, 0, 4)
@@ -187,7 +195,7 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.addWidget(QtWidgets.QLabel("Loader"), 2, 3)
         controls_layout.addWidget(self.loader_combo, 2, 4)
 
-        controls_layout.addWidget(QtWidgets.QLabel("Providers"), 3, 0)
+        controls_layout.addWidget(QtWidgets.QLabel("Sources"), 3, 0)
         controls_layout.addWidget(self.modrinth_checkbox, 3, 1)
         controls_layout.addWidget(self.curseforge_checkbox, 3, 2)
         controls_layout.addWidget(self.curseforge_api_key_input, 3, 3, 1, 2)
@@ -204,6 +212,14 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.addWidget(self.matching_button, 6, 3)
         controls_layout.addWidget(self.export_report_button, 6, 4)
 
+        self.steps_hint_label = QtWidgets.QLabel(
+            "Étapes conseillées: 1) Scanner, 2) Vérifier les mises à jour, 3) Contrôler la confiance du matching, "
+            "4) Simuler (dry-run) ou appliquer, 5) Exporter le rapport."
+        )
+        self.steps_hint_label.setObjectName("stepsHint")
+        self.steps_hint_label.setWordWrap(True)
+        controls_layout.addWidget(self.steps_hint_label, 7, 0, 1, 5)
+
         root_layout.addWidget(controls)
 
         content_splitter = QtWidgets.QSplitter(QtCore.Qt.Orientation.Horizontal)
@@ -216,12 +232,12 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mods_table = QtWidgets.QTableWidget(0, 9)
         self.mods_table.setHorizontalHeaderLabels(
             [
-                "Maj",
+                "MàJ",
                 "Mod",
                 "ID",
                 "Version locale",
-                "Derniere",
-                "Etat",
+                "Dernière",
+                "État",
                 "Source",
                 "Loader",
                 "Fichier",
@@ -251,7 +267,7 @@ class MainWindow(QtWidgets.QMainWindow):
         detail_layout.setContentsMargins(12, 12, 12, 12)
         detail_layout.setSpacing(8)
 
-        detail_title = QtWidgets.QLabel("Details des versions")
+        detail_title = QtWidgets.QLabel("Détails des versions")
         detail_title.setObjectName("panelTitle")
 
         filters_row = QtWidgets.QHBoxLayout()
@@ -341,6 +357,13 @@ class MainWindow(QtWidgets.QMainWindow):
                 color: #90dcff;
                 font-weight: 600;
                 font-size: 10.8pt;
+            }
+            QLabel#stepsHint {
+                color: #c6e9ff;
+                background: rgba(23, 50, 74, 0.65);
+                border: 1px solid rgba(111, 198, 233, 0.25);
+                border-radius: 8px;
+                padding: 8px 10px;
             }
             QLabel {
                 color: #dceffe;
@@ -556,7 +579,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.profile_delete_button.setEnabled(not busy)
         self.dry_run_checkbox.setEnabled(not busy)
 
-        self.busy_label.setText(label if busy and label else "Pret")
+        self.busy_label.setText(label if busy and label else "Prêt")
         if busy:
             self.busy_label.setStyleSheet("background:#243645; color:#ffd27f; border:1px solid #9d6f24; border-radius:999px;")
         else:
@@ -570,7 +593,7 @@ class MainWindow(QtWidgets.QMainWindow):
     ) -> None:
         """Execute long-running work in a thread while keeping the UI responsive."""
         if self._busy:
-            self._log("Une operation est deja en cours.")
+            self._log("Une opération est déjà en cours.")
             return
 
         self._set_busy(True, busy_label)
@@ -617,10 +640,10 @@ class MainWindow(QtWidgets.QMainWindow):
             elif versions:
                 self._set_combo_value(self.mc_version_combo, str(versions[0]))
 
-            self._log(f"Liste de versions Minecraft chargee ({len(versions)} entree(s)).")
+            self._log(f"Liste des versions Minecraft chargée ({len(versions)} entrée(s)).")
 
         if background:
-            self._run_task(work, done, "Chargement versions Minecraft...")
+            self._run_task(work, done, "Chargement des versions Minecraft...")
         else:
             done(work())
 
@@ -641,13 +664,13 @@ class MainWindow(QtWidgets.QMainWindow):
             self.before_snapshot = None
             self.last_report = None
             self._populate_table()
-            self._log(f"Scan termine: {len(self.local_mods)} mod(s) detecte(s).")
+            self._log(f"Scan terminé: {len(self.local_mods)} mod(s) détecté(s).")
 
         self._run_task(work, done, "Scan des mods...")
 
     def _autodetect_context(self) -> None:
         if not self.local_mods:
-            QtWidgets.QMessageBox.information(self, "Auto detect", "Scanne d'abord le dossier mods.")
+            QtWidgets.QMessageBox.information(self, "Auto-détection", "Scanne d'abord le dossier mods.")
             return
 
         loader, minecraft = autodetect_loader_and_minecraft(self.local_mods)
@@ -657,12 +680,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self._set_combo_value(self.mc_version_combo, minecraft)
 
         self._save_form_settings()
-        self._log(f"Auto detect: loader={loader}, minecraft={minecraft or '-'}")
+        self._log(f"Auto-détection: loader={loader}, minecraft={minecraft or '-'}")
 
     def _check_updates(self) -> None:
         """Query enabled providers and build the pre-apply report snapshot."""
         if not self.local_mods:
-            QtWidgets.QMessageBox.information(self, "Verification", "Scanne les mods avant de verifier les updates.")
+            QtWidgets.QMessageBox.information(self, "Vérification", "Scanne les mods avant de vérifier les mises à jour.")
             return
 
         settings = self._save_form_settings()
@@ -688,22 +711,22 @@ class MainWindow(QtWidgets.QMainWindow):
             errors = len([u for u in self.update_infos if u.status == "error"])
             strict_state = "on" if self.settings.strict_matching else "off"
             self._log(
-                f"Verification finie: {available} update(s), {uptodate} a jour, {missing} introuvable(s), {errors} erreur(s), strict={strict_state}."
+                f"Vérification terminée: {available} mise(s) à jour, {uptodate} à jour, {missing} introuvable(s), {errors} erreur(s), strict={strict_state}."
             )
 
-        self._run_task(work, done, "Verification des updates...")
+        self._run_task(work, done, "Vérification des mises à jour...")
 
     def _update_selected_mods(self) -> None:
         selected = self._collect_target_updates(only_checked=True)
         if not selected:
-            QtWidgets.QMessageBox.information(self, "Selection", "Aucun mod coche avec update disponible.")
+            QtWidgets.QMessageBox.information(self, "Sélection", "Aucun mod coché avec mise à jour disponible.")
             return
         self._run_updates(selected)
 
     def _update_all_mods(self) -> None:
         selected = self._collect_target_updates(only_checked=False)
         if not selected:
-            QtWidgets.QMessageBox.information(self, "Mise a jour", "Aucun update disponible.")
+            QtWidgets.QMessageBox.information(self, "Mise à jour", "Aucune mise à jour disponible.")
             return
         self._run_updates(selected)
 
@@ -730,12 +753,12 @@ class MainWindow(QtWidgets.QMainWindow):
         names = "\n".join(f"- {item.local_mod.name}" for item in targets[:10])
         more = "" if len(targets) <= 10 else f"\n... +{len(targets) - 10} autre(s)"
         settings = self._save_form_settings()
-        mode_text = "SIMULATION dry-run" if settings.dry_run else "application reelle"
+        mode_text = "SIMULATION dry-run" if settings.dry_run else "application réelle"
         answer = QtWidgets.QMessageBox.question(
             self,
             "Confirmation",
-            f"Lancer {len(targets)} update(s) en mode {mode_text} ?\n\n{names}{more}\n\n"
-            "Les anciens .jar seront renommes en .old hors dry-run.",
+            f"Lancer {len(targets)} mise(s) à jour en mode {mode_text} ?\n\n{names}{more}\n\n"
+            "Les anciens .jar seront renommés en .old hors dry-run.",
         )
         if answer != QtWidgets.QMessageBox.StandardButton.Yes:
             return
@@ -748,7 +771,7 @@ class MainWindow(QtWidgets.QMainWindow):
 
         def done(result: object) -> None:
             if not isinstance(result, tuple) or len(result) != 3:
-                self._log("Format de resultat inattendu pour update.")
+                self._log("Format de résultat inattendu pour update.")
                 return
 
             applied, errors, post_mods = result
@@ -771,29 +794,38 @@ class MainWindow(QtWidgets.QMainWindow):
 
             QtWidgets.QMessageBox.information(
                 self,
-                "Operation terminee",
+                "Opération terminée",
                 f"Mode: {'dry-run' if settings.dry_run else 'normal'}\n"
-                f"Updates traitees: {applied_count}\n"
+                f"Mises à jour traitées: {applied_count}\n"
                 f"Erreurs: {error_count}",
             )
 
-        busy_text = "Simulation des updates..." if settings.dry_run else "Telechargement et remplacement des mods..."
+        busy_text = "Simulation des mises à jour..." if settings.dry_run else "Téléchargement et remplacement des mods..."
         self._run_task(work, done, busy_text)
 
     def _populate_table(self) -> None:
         self.mods_table.setRowCount(0)
         by_path = {info.local_mod.path: info for info in self.update_infos}
+        status_labels = {
+            "scanned": "Scanné",
+            "update_available": "Mise à jour disponible",
+            "up_to_date": "À jour",
+            "not_found": "Introuvable",
+            "error": "Erreur",
+        }
 
         for row, local in enumerate(self.local_mods):
             info = by_path.get(local.path)
 
-            status_text = "Scanne"
+            status_key = "scanned"
             latest_text = "-"
             provider = "-"
             if info:
-                status_text = info.status
+                status_key = info.status
                 latest_text = info.latest.version_number if info.latest else "-"
                 provider = info.provider or "-"
+
+            status_text = status_labels.get(status_key, status_key)
 
             self.mods_table.insertRow(row)
 
@@ -817,12 +849,12 @@ class MainWindow(QtWidgets.QMainWindow):
             self.mods_table.setItem(row, 7, QtWidgets.QTableWidgetItem(local.loader_hint))
             self.mods_table.setItem(row, 8, QtWidgets.QTableWidgetItem(local.path.name))
 
-            self._colorize_status_row(row, status_text)
+            self._colorize_status_row(row, status_key)
 
         if self.local_mods:
             self.mods_table.selectRow(0)
         else:
-            self.details_text.setPlainText("Aucun mod detecte.")
+            self.details_text.setPlainText("Aucun mod détecté.")
 
     def _colorize_status_row(self, row: int, status: str) -> None:
         status_colors = {
@@ -859,10 +891,10 @@ class MainWindow(QtWidgets.QMainWindow):
                 f"Mod: {local.name}",
                 f"ID: {local.mod_id}",
                 f"Version locale: {local.version}",
-                f"Loader detecte: {local.loader_hint}",
+                f"Loader détecté: {local.loader_hint}",
                 f"Fichier: {local.path.name}",
                 "",
-                "Lance une verification d'updates pour voir les details de versions.",
+                "Lance une vérification des mises à jour pour voir les détails de versions.",
             ]
             self.details_text.setPlainText("\n".join(lines))
             return
@@ -878,19 +910,19 @@ class MainWindow(QtWidgets.QMainWindow):
         if not self.update_infos:
             QtWidgets.QMessageBox.information(
                 self,
-                "Confiance matching",
-                "Lance d'abord une verification des updates pour voir les scores.",
+                "Confiance du matching",
+                "Lance d'abord une vérification des mises à jour pour voir les scores.",
             )
             return
 
         dialog = QtWidgets.QDialog(self)
-        dialog.setWindowTitle("Confiance de matching (pre-validation)")
+        dialog.setWindowTitle("Confiance du matching (pré-validation)")
         dialog.resize(1220, 680)
 
         layout = QtWidgets.QVBoxLayout(dialog)
         info_label = QtWidgets.QLabel(
-            "Scores remontes par provider avant validation finale.\n"
-            "Un candidat marque 'selectionne' est celui retenu pour le mod."
+            "Scores remontés par provider avant validation finale.\n"
+            "Un candidat marqué 'sélectionné' est celui retenu pour le mod."
         )
         info_label.setWordWrap(True)
 
@@ -905,7 +937,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 "Projet",
                 "Slug",
                 "Downloads",
-                "Selection",
+                "Sélection",
                 "Note",
             ]
         )
@@ -995,8 +1027,8 @@ class MainWindow(QtWidgets.QMainWindow):
             else:
                 QtWidgets.QMessageBox.information(
                     self,
-                    "Exporter rapport",
-                    "Aucun rapport a exporter. Lance une verification (et optionnellement une mise a jour) d'abord.",
+                    "Exporter le rapport",
+                    "Aucun rapport à exporter. Lance une vérification (et optionnellement une mise à jour) d'abord.",
                 )
                 return
 
@@ -1010,11 +1042,11 @@ class MainWindow(QtWidgets.QMainWindow):
         json_path = export_report_json(self.last_report, output_path, basename)
         csv_path = export_report_csv(self.last_report, output_path, basename)
 
-        self._log(f"Rapport JSON exporte: {json_path}")
-        self._log(f"Rapport CSV exporte: {csv_path}")
+        self._log(f"Rapport JSON exporté: {json_path}")
+        self._log(f"Rapport CSV exporté: {csv_path}")
         QtWidgets.QMessageBox.information(
             self,
-            "Export termine",
+            "Export terminé",
             f"JSON: {json_path}\nCSV: {csv_path}",
         )
 
@@ -1082,7 +1114,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._loading_form = False
 
         self._clear_results()
-        self._log(f"Profil cree: {profile_name}")
+        self._log(f"Profil créé: {profile_name}")
 
     def _delete_profile(self) -> None:
         self._save_form_settings()
@@ -1114,7 +1146,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._loading_form = False
 
         self._clear_results()
-        self._log(f"Profil supprime: {profile_name} (actif: {new_active})")
+        self._log(f"Profil supprimé: {profile_name} (actif: {new_active})")
 
     def _log(self, message: str) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
