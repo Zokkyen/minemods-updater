@@ -74,8 +74,25 @@ class MainWindow(QtWidgets.QMainWindow):
 
         self._build_ui()
         self._apply_theme()
+        self._apply_startup_min_width()
         self._load_settings_to_form()
         self._refresh_minecraft_versions(background=True)
+
+    def _apply_startup_min_width(self) -> None:
+        """Start at the effective minimal width to avoid unnecessary horizontal slack."""
+        min_hint = self.minimumSizeHint()
+        min_width = int(min_hint.width())
+        min_height = int(min_hint.height())
+
+        if min_width > 0:
+            self.setMinimumWidth(min_width)
+
+        if min_height > 0:
+            self.setMinimumHeight(min_height)
+
+        target_width = max(min_width, self.width()) if min_width <= 0 else min_width
+        target_height = max(self.height(), min_height)
+        self.resize(target_width, target_height)
 
     def _build_ui(self) -> None:
         root = QtWidgets.QWidget()
@@ -216,8 +233,8 @@ class MainWindow(QtWidgets.QMainWindow):
         table_filters.setSpacing(6)
 
         self.mods_search_input = QtWidgets.QLineEdit()
-        self.mods_search_input.setPlaceholderText("Rechercher un mod (nom, ID, fichier)")
-        self.mods_search_input.setMinimumWidth(460)
+        self.mods_search_input.setPlaceholderText("Rechercher un mod (nom, ID...)")
+        self.mods_search_input.setMinimumWidth(200)
         self.mods_search_input.setClearButtonEnabled(True)
         self.mods_search_input.textChanged.connect(self._on_table_filter_changed)
 
@@ -250,7 +267,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.visible_count_label.setObjectName("visibleCount")
 
         table_filters.addWidget(QtWidgets.QLabel("Recherche:"))
-        table_filters.addWidget(self.mods_search_input, 4)
+        table_filters.addWidget(self.mods_search_input, 3)
         table_filters.addWidget(QtWidgets.QLabel("État:"))
         table_filters.addWidget(self.status_filter_combo)
         table_filters.addWidget(QtWidgets.QLabel("Source:"))
@@ -443,9 +460,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 width: 20px;
             }
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #1f7a9f,
-                    stop:1 #20a3bd);
+                background: #2199ba;
                 border: 1px solid #39c0de;
                 border-radius: 8px;
                 padding: 6px 10px;
@@ -453,9 +468,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 font-weight: 600;
             }
             QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #258cb5,
-                    stop:1 #28b8d4);
+                background: #26a8c9;
             }
             QPushButton:disabled {
                 background: #224358;
