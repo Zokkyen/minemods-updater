@@ -2,33 +2,33 @@
 
 ## Description courte (GitHub About)
 
-MineMods Updater met a jour tes mods Minecraft automatiquement en respectant la version du jeu, le loader (Fabric/Forge/Quilt/NeoForge) et la compatibilite provider.
+MineMods Updater met à jour tes mods Minecraft automatiquement en respectant la version du jeu, le loader (Fabric/Forge/Quilt/NeoForge) et la compatibilité provider.
 
 ## Description courte alternative (plus concise)
 
-Updater desktop Windows pour mods Minecraft avec verification de compatibilite loader/version, dry-run et rapports JSON/CSV.
+Updater desktop Windows pour mods Minecraft avec vérification de compatibilité loader/version, dry-run et rapports JSON/CSV.
 
-## Description complete
+## Description complète
 
 MineMods Updater est une application desktop Windows qui simplifie la maintenance des mods Minecraft.
 
-Le logiciel scanne un dossier mods local, detecte les versions actuelles, interroge Modrinth et CurseForge, puis propose des mises a jour compatibles avec ton environnement (version Minecraft + loader).
+Le logiciel scanne un dossier mods local, détecte les versions actuelles, interroge Modrinth et CurseForge, puis propose des mises à jour compatibles avec ton environnement (version Minecraft + loader).
 
-Avant toute action, tu peux verifier la confiance de matching pour eviter les faux-positifs. Ensuite, tu choisis entre simulation dry-run ou application reelle. Lors d une mise a jour, l ancien mod est sauvegarde automatiquement en .old, et un rapport complet JSON/CSV est genere.
+Avant toute action, tu peux vérifier la confiance de matching pour éviter les faux-positifs. Ensuite, tu choisis entre simulation dry-run ou application réelle. Lors d'une mise à jour, l'ancien mod est sauvegardé automatiquement en .old, et un rapport complet JSON/CSV est généré.
 
 ## Valeur utilisateur
 
-- Evite les updates incompatibles
-- Reduit le risque de casser un modpack
-- Garde une trace des operations
-- Permet une validation avant ecriture
+- Évite les updates incompatibles
+- Réduit le risque de casser un modpack
+- Garde une trace des opérations
+- Permet une validation avant écriture
 
 ## Public cible
 
-- Joueurs Minecraft moddes
-- Createurs de modpacks
-- Administrateurs de packs prives
+- Joueurs Minecraft moddés
+- Créateurs de modpacks
+- Administrateurs de packs privés
 
-## Mots-cles GitHub recommandes
+## Mots-clés GitHub recommandés
 
 minecraft, mods, updater, modrinth, curseforge, fabric, forge, quilt, neoforge, desktop, pyside6
