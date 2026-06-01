@@ -26,6 +26,7 @@ DOWNLOAD_CHUNK_SIZE = 1024 * 128
 DOWNLOAD_TIMEOUT = 45
 CHECK_UPDATES_PARALLEL_THRESHOLD = 4
 CHECK_UPDATES_MAX_WORKERS = 6
+CHECK_UPDATES_MAX_WORKERS_MODRINTH = 3
 CHECK_UPDATES_CACHE_TTL_SECONDS = 90
 CHECK_UPDATES_CACHE_MAX_ENTRIES = 500
 CHANGELOG_CATEGORY_ORDER = ["breaking", "fix", "performance", "other"]
@@ -265,7 +266,11 @@ def _compute_check_workers(mod_count: int, settings: AppSettings) -> int:
 
     curseforge_penalty = 1 if settings.use_curseforge else 0
     cpu_budget = max(2, (os.cpu_count() or 4))
-    recommended = min(CHECK_UPDATES_MAX_WORKERS - curseforge_penalty, cpu_budget)
+    burst_cap = CHECK_UPDATES_MAX_WORKERS - curseforge_penalty
+    if settings.use_modrinth:
+        burst_cap = min(burst_cap, CHECK_UPDATES_MAX_WORKERS_MODRINTH)
+
+    recommended = min(burst_cap, cpu_budget)
     return max(1, min(mod_count, recommended))
 
 

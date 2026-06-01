@@ -6,8 +6,11 @@ confidence, and merges provider-specific diagnostics into one decision.
 
 from __future__ import annotations
 
+from email.utils import parsedate_to_datetime
 import json
 import re
+import threading
+import time
 from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Iterable
@@ -19,6 +22,111 @@ from .models import AppSettings, LocalMod, MatchCandidate, RemoteVersion, Update
 
 
 REQUEST_TIMEOUT_SECONDS = 20
+REQUEST_RETRY_ATTEMPTS = 4
+REQUEST_BACKOFF_BASE_SECONDS = 0.6
+REQUEST_BACKOFF_MAX_SECONDS = 8.0
+RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
+MODRINTH_MIN_REQUEST_INTERVAL_SECONDS = 0.22
+MODRINTH_MAX_CONCURRENT_REQUESTS = 2
+
+_modrinth_rate_lock = threading.Lock()
+_modrinth_last_request_at = 0.0
+_modrinth_request_gate = threading.Semaphore(MODRINTH_MAX_CONCURRENT_REQUESTS)
+
+
+def _backoff_seconds(attempt: int) -> float:
+    return min(REQUEST_BACKOFF_MAX_SECONDS, REQUEST_BACKOFF_BASE_SECONDS * (2**attempt))
+
+
+def _retry_after_seconds(response: requests.Response) -> float | None:
+    raw_value = str(response.headers.get("Retry-After") or "").strip()
+    if not raw_value:
+        return None
+
+    if raw_value.isdigit():
+        return max(0.0, min(float(int(raw_value)), 60.0))
+
+    try:
+        retry_at = parsedate_to_datetime(raw_value)
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        delta = (retry_at - datetime.now(timezone.utc)).total_seconds()
+        return max(0.0, min(delta, 60.0))
+    except Exception:
+        return None
+
+
+def _throttle_modrinth_request() -> None:
+    global _modrinth_last_request_at
+
+    with _modrinth_rate_lock:
+        now = time.monotonic()
+        wait_seconds = MODRINTH_MIN_REQUEST_INTERVAL_SECONDS - (now - _modrinth_last_request_at)
+        if wait_seconds > 0:
+            time.sleep(wait_seconds)
+        _modrinth_last_request_at = time.monotonic()
+
+
+def _request_json_with_retry(
+    session: requests.Session,
+    url: str,
+    *,
+    params: dict | None = None,
+    timeout: int = REQUEST_TIMEOUT_SECONDS,
+    rate_limited: bool = False,
+):
+    last_error: requests.RequestException | None = None
+
+    for attempt in range(REQUEST_RETRY_ATTEMPTS):
+        response: requests.Response | None = None
+        try:
+            if rate_limited:
+                with _modrinth_request_gate:
+                    _throttle_modrinth_request()
+                    response = session.get(url, params=params, timeout=timeout)
+            else:
+                response = session.get(url, params=params, timeout=timeout)
+
+            if response.status_code in RETRYABLE_STATUS_CODES:
+                if attempt + 1 >= REQUEST_RETRY_ATTEMPTS:
+                    response.raise_for_status()
+
+                retry_after = _retry_after_seconds(response)
+                delay = retry_after if retry_after is not None else _backoff_seconds(attempt)
+                time.sleep(delay)
+                continue
+
+            response.raise_for_status()
+            return response.json()
+        except requests.RequestException as exc:
+            last_error = exc
+            if attempt + 1 >= REQUEST_RETRY_ATTEMPTS:
+                raise
+
+            if response is not None and response.status_code in RETRYABLE_STATUS_CODES:
+                retry_after = _retry_after_seconds(response)
+                delay = retry_after if retry_after is not None else _backoff_seconds(attempt)
+            elif isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code in RETRYABLE_STATUS_CODES:
+                retry_after = _retry_after_seconds(exc.response)
+                delay = retry_after if retry_after is not None else _backoff_seconds(attempt)
+            else:
+                delay = _backoff_seconds(attempt)
+
+            time.sleep(delay)
+
+    if last_error is not None:
+        raise last_error
+    raise RuntimeError("Request failed without explicit exception")
+
+
+def _network_error_message(provider: str, exc: requests.RequestException) -> str:
+    if isinstance(exc, requests.HTTPError) and exc.response is not None and exc.response.status_code == 429:
+        retry_after = _retry_after_seconds(exc.response)
+        if retry_after and retry_after >= 1:
+            return f"{provider} rate limit atteint (429). Réessaie dans {int(retry_after)}s."
+        return f"{provider} rate limit atteint (429). Réessaie dans quelques secondes."
+
+    return f"{provider} network error: {exc}"
 
 
 def _parse_iso_datetime(value: str) -> datetime:
@@ -101,6 +209,31 @@ def _query_candidates(local_mod: LocalMod) -> list[str]:
         queries.append(query)
 
     return queries
+
+
+def _has_modrinth_exact_hit(hits: list[dict], mod_id: str) -> bool:
+    mod_key = _normalized_text(mod_id)
+    if not mod_key:
+        return False
+
+    for hit in hits:
+        slug_key = _normalized_text(str(hit.get("slug", "")))
+        title_key = _normalized_text(str(hit.get("title", "")))
+        if slug_key == mod_key or title_key == mod_key:
+            return True
+    return False
+
+
+def _has_curseforge_exact_hit(hits: list[dict], mod_id: str) -> bool:
+    mod_key = _normalized_text(mod_id)
+    if not mod_key:
+        return False
+
+    for hit in hits:
+        slug_key = _normalized_text(str(hit.get("slug", "")))
+        if slug_key == mod_key:
+            return True
+    return False
 
 
 def _string_similarity(left: str, right: str) -> float:
@@ -241,9 +374,12 @@ class ModrinthProvider:
     def fetch_minecraft_versions(self) -> list[str]:
         url = f"{self.base_url}/tag/game_version"
         try:
-            response = self.session.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
-            response.raise_for_status()
-            payload = response.json()
+            payload = _request_json_with_retry(
+                self.session,
+                url,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+                rate_limited=True,
+            )
         except requests.RequestException:
             return [
                 "1.21.1",
@@ -392,7 +528,7 @@ class ModrinthProvider:
             return UpdateInfo(
                 local_mod=local_mod,
                 status="error",
-                message=f"Modrinth network error: {exc}",
+                message=_network_error_message(self.name, exc),
                 provider=self.name,
             )
         except Exception as exc:  # Defensive guard for malformed provider responses.
@@ -411,11 +547,13 @@ class ModrinthProvider:
         strict_matching: bool,
     ) -> tuple[dict | None, list[MatchCandidate], str]:
         candidates: list[dict] = []
-        for query in _query_candidates(local_mod):
+        for query in _query_candidates(local_mod)[:3]:
             if not query:
                 continue
             hits = self._search_projects(query=query, minecraft_version=minecraft_version, loader=loader)
             candidates.extend(hits)
+            if _has_modrinth_exact_hit(hits, local_mod.mod_id):
+                break
 
         if not candidates:
             return None, [], "Aucun résultat de recherche provider."
@@ -485,9 +623,13 @@ class ModrinthProvider:
             "facets": json.dumps(facets),
         }
 
-        response = self.session.get(f"{self.base_url}/search", params=params, timeout=REQUEST_TIMEOUT_SECONDS)
-        response.raise_for_status()
-        payload = response.json()
+        payload = _request_json_with_retry(
+            self.session,
+            f"{self.base_url}/search",
+            params=params,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+            rate_limited=True,
+        )
         return payload.get("hits", []) if isinstance(payload, dict) else []
 
     def _score_hit(self, hit: dict, local_mod: LocalMod) -> tuple[float, float]:
@@ -524,14 +666,14 @@ class ModrinthProvider:
         if loader and loader not in {"auto", "unknown"}:
             params["loaders"] = json.dumps([loader])
 
-        response = self.session.get(
+        payload = _request_json_with_retry(
+            self.session,
             f"{self.base_url}/project/{project_id}/version",
             params=params,
             timeout=REQUEST_TIMEOUT_SECONDS,
+            rate_limited=True,
         )
-        response.raise_for_status()
 
-        payload = response.json()
         versions: list[RemoteVersion] = []
         for item in payload if isinstance(payload, list) else []:
             files = item.get("files", []) if isinstance(item, dict) else []
@@ -662,7 +804,7 @@ class CurseForgeProvider:
             return UpdateInfo(
                 local_mod=local_mod,
                 status="error",
-                message=f"CurseForge network error: {exc}",
+                message=_network_error_message(self.name, exc),
                 provider=self.name,
             )
         except Exception as exc:
@@ -675,17 +817,23 @@ class CurseForgeProvider:
 
     def _search_best_project(self, local_mod: LocalMod, strict_matching: bool) -> tuple[dict | None, list[MatchCandidate], str]:
         candidates: list[dict] = []
-        for slug in _slug_candidates(local_mod):
+        for slug in _slug_candidates(local_mod)[:3]:
             params = {
                 "gameId": self.game_id,
                 "classId": self.class_id,
                 "slug": slug,
                 "pageSize": 10,
             }
-            response = self.session.get(f"{self.base_url}/mods/search", params=params, timeout=REQUEST_TIMEOUT_SECONDS)
-            response.raise_for_status()
-            payload = response.json().get("data", [])
+            payload_raw = _request_json_with_retry(
+                self.session,
+                f"{self.base_url}/mods/search",
+                params=params,
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
+            payload = payload_raw.get("data", []) if isinstance(payload_raw, dict) else []
             candidates.extend(payload)
+            if _has_curseforge_exact_hit(payload, local_mod.mod_id):
+                break
 
         if not candidates:
             return None, [], "Aucun résultat de recherche provider."
@@ -786,14 +934,13 @@ class CurseForgeProvider:
         if loader_type:
             params["modLoaderType"] = loader_type
 
-        response = self.session.get(
+        payload_raw = _request_json_with_retry(
+            self.session,
             f"{self.base_url}/mods/{project_id}/files",
             params=params,
             timeout=REQUEST_TIMEOUT_SECONDS,
         )
-        response.raise_for_status()
-
-        payload = response.json().get("data", [])
+        payload = payload_raw.get("data", []) if isinstance(payload_raw, dict) else []
         versions: list[RemoteVersion] = []
         for item in payload:
             download_url = str(item.get("downloadUrl") or "")
