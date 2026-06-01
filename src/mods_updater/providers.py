@@ -1,3 +1,9 @@
+"""Provider adapters and matching strategy for remote mod updates.
+
+This module resolves updates from Modrinth and CurseForge, computes matching
+confidence, and merges provider-specific diagnostics into one decision.
+"""
+
 from __future__ import annotations
 
 import json
@@ -67,6 +73,7 @@ def _token_similarity(left: str, right: str) -> float:
 
 
 def _match_confidence(local_mod: LocalMod, candidate_slug: str, candidate_title: str) -> float:
+    """Compute a confidence value based on string and token similarities."""
     local_values = [local_mod.mod_id, local_mod.name, local_mod.path.stem]
     remote_values = [candidate_slug, candidate_title]
 
@@ -94,6 +101,7 @@ def _version_matches(local_version: str, remote_version: str) -> bool:
 
 
 def _rank_versions(local_version: str, versions: list[RemoteVersion]) -> tuple[str, str, RemoteVersion | None, list[RemoteVersion]]:
+    """Classify local vs remote versions and return the best upgrade path."""
     if not versions:
         return "not_found", "No compatible version found.", None, []
 
@@ -118,6 +126,7 @@ def _rank_versions(local_version: str, versions: list[RemoteVersion]) -> tuple[s
 
 
 class ModrinthProvider:
+    """Modrinth API client with strict/relaxed project matching controls."""
     name = "Modrinth"
     base_url = "https://api.modrinth.com/v2"
 
@@ -410,6 +419,7 @@ class ModrinthProvider:
 
 
 class CurseForgeProvider:
+    """CurseForge API client with project search and file compatibility filters."""
     name = "CurseForge"
     base_url = "https://api.curseforge.com/v1"
     game_id = 432
@@ -687,6 +697,7 @@ def _slug_candidates(local_mod: LocalMod) -> list[str]:
 
 
 def pick_best_update(local_mod: LocalMod, updates: list[UpdateInfo]) -> UpdateInfo:
+    """Select the final provider result and attach matching diagnostics."""
     if not updates:
         return UpdateInfo(local_mod=local_mod, status="not_found", message="No active provider.")
 
@@ -725,6 +736,7 @@ def pick_best_update(local_mod: LocalMod, updates: list[UpdateInfo]) -> UpdateIn
 
 
 def _attach_matching_diagnostics(selected: UpdateInfo, updates: list[UpdateInfo]) -> None:
+    """Merge provider candidate lists into the chosen update result."""
     combined_candidates: list[MatchCandidate] = []
     for item in updates:
         combined_candidates.extend(item.match_candidates)
@@ -766,6 +778,7 @@ def resolve_updates_for_mod(
     modrinth: ModrinthProvider,
     curseforge: CurseForgeProvider | None,
 ) -> UpdateInfo:
+    """Resolve one local mod against enabled providers and return one decision."""
     loader = local_mod.loader_hint if settings.loader == "auto" and local_mod.loader_hint != "unknown" else settings.loader
     minecraft_version = settings.minecraft_version
 

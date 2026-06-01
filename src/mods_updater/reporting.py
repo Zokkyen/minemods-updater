@@ -1,3 +1,9 @@
+"""Report generation helpers for JSON/CSV export.
+
+Reports are built as before/after snapshots so users can review check results,
+applied updates, and errors in a deterministic structure.
+"""
+
 from __future__ import annotations
 
 import csv
@@ -59,6 +65,7 @@ def _update_to_dict(local_mod: LocalMod, update_info: UpdateInfo | None) -> dict
 
 
 def build_before_snapshot(local_mods: list[LocalMod], update_infos: list[UpdateInfo]) -> dict:
+    """Serialize scanned mods and update-check outcomes before apply/simulate."""
     by_path = {info.local_mod.path: info for info in update_infos}
     rows = [_update_to_dict(local_mod, by_path.get(local_mod.path)) for local_mod in local_mods]
 
@@ -75,6 +82,7 @@ def build_after_snapshot(
     errors: list[str],
     dry_run: bool,
 ) -> dict:
+    """Serialize post-operation state, including simulated/applied actions."""
     updates = [
         {
             "mod_name": item.mod_name,
@@ -114,6 +122,7 @@ def build_after_snapshot(
 
 
 def build_full_report(settings: AppSettings, before_snapshot: dict | None, after_snapshot: dict | None) -> dict:
+    """Assemble the final report document with context and both snapshots."""
     return {
         "report_version": "1.0",
         "generated_at": _iso_now(),
@@ -145,6 +154,7 @@ def make_report_basename(settings: AppSettings) -> str:
 
 
 def export_report_json(report: dict, output_dir: Path, basename: str) -> Path:
+    """Write the full report as UTF-8 JSON."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{basename}.json"
     output_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
@@ -152,6 +162,7 @@ def export_report_json(report: dict, output_dir: Path, basename: str) -> Path:
 
 
 def export_report_csv(report: dict, output_dir: Path, basename: str) -> Path:
+    """Write a flattened CSV view for quick spreadsheet analysis."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{basename}.csv"
 

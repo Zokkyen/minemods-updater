@@ -1,3 +1,9 @@
+"""Update orchestration for scanning results.
+
+This module handles provider checks, optional dry-run simulation, file
+replacement with backups, and changelog categorization for UI display.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -65,6 +71,7 @@ class AppliedUpdate:
 
 
 def check_updates(mods: list[LocalMod], settings: AppSettings) -> list[UpdateInfo]:
+    """Resolve update status for every scanned local mod."""
     modrinth = ModrinthProvider()
     curseforge = CurseForgeProvider(settings.curseforge_api_key) if settings.use_curseforge else None
 
@@ -82,6 +89,7 @@ def check_updates(mods: list[LocalMod], settings: AppSettings) -> list[UpdateInf
 
 
 def apply_updates(items: list[UpdateInfo], settings: AppSettings, dry_run: bool = False) -> tuple[list[AppliedUpdate], list[str]]:
+    """Apply or simulate selected updates and collect per-mod errors."""
     applied: list[AppliedUpdate] = []
     errors: list[str] = []
 
@@ -107,6 +115,7 @@ def _apply_single_update(
     session: requests.Session,
     dry_run: bool = False,
 ) -> AppliedUpdate:
+    """Download and atomically replace one mod file, or simulate the action."""
     local_path = update.local_mod.path
     if not local_path.exists():
         raise FileNotFoundError(f"Local mod file missing: {local_path}")
@@ -237,6 +246,7 @@ def summarize_changelog_categories(update_info: UpdateInfo) -> dict[str, int]:
 
 
 def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | None = None) -> str:
+    """Build a readable changelog summary for the details panel in the UI."""
     lines: list[str] = []
     filters = enabled_filters or set(CHANGELOG_CATEGORY_ORDER)
 

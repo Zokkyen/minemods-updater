@@ -1,3 +1,5 @@
+"""Application bootstrap for the MineMods Updater desktop app."""
+
 from __future__ import annotations
 
 import sys
@@ -9,6 +11,7 @@ from mods_updater.ui import MainWindow
 
 
 def main() -> int:
+    """Create and run the Qt application event loop."""
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
     app.setOrganizationName(APP_ORGANIZATION)

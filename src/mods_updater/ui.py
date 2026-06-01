@@ -1,3 +1,9 @@
+"""Qt main window and interaction workflow for MineMods Updater.
+
+The UI coordinates scan/check/apply actions, keeps settings in sync with forms,
+and exposes diagnostics/reporting features for safe updates.
+"""
+
 from __future__ import annotations
 
 import traceback
@@ -31,6 +37,7 @@ from .update_service import CHANGELOG_CATEGORY_ORDER, apply_updates, build_chang
 
 
 class TaskThread(QtCore.QThread):
+    """Run blocking operations in a worker thread and emit typed callbacks."""
     completed = QtCore.Signal(object)
     failed = QtCore.Signal(str)
 
@@ -49,6 +56,7 @@ class TaskThread(QtCore.QThread):
 
 
 class MainWindow(QtWidgets.QMainWindow):
+    """Primary desktop window that orchestrates the end-to-end update flow."""
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
@@ -560,6 +568,7 @@ class MainWindow(QtWidgets.QMainWindow):
         on_success: Callable[[object], None],
         busy_label: str,
     ) -> None:
+        """Execute long-running work in a thread while keeping the UI responsive."""
         if self._busy:
             self._log("Une operation est deja en cours.")
             return
@@ -570,6 +579,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._threads.add(thread)
 
         def _finish_cleanup() -> None:
+            # Always reset busy state and release worker reference, success or error.
             self._threads.discard(thread)
             self._set_busy(False)
 
@@ -650,6 +660,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._log(f"Auto detect: loader={loader}, minecraft={minecraft or '-'}")
 
     def _check_updates(self) -> None:
+        """Query enabled providers and build the pre-apply report snapshot."""
         if not self.local_mods:
             QtWidgets.QMessageBox.information(self, "Verification", "Scanne les mods avant de verifier les updates.")
             return
@@ -667,6 +678,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self.update_infos = list(result) if isinstance(result, list) else []
             self._populate_table()
             self._save_form_settings()
+            # Keep a full pre-operation snapshot for reproducible exports.
             self.before_snapshot = build_before_snapshot(self.local_mods, self.update_infos)
             self.last_report = build_full_report(self.settings, self.before_snapshot, None)
 
@@ -714,6 +726,7 @@ class MainWindow(QtWidgets.QMainWindow):
         return targets
 
     def _run_updates(self, targets: list[UpdateInfo]) -> None:
+        """Apply updates (or dry-run simulation) and persist a post-operation report."""
         names = "\n".join(f"- {item.local_mod.name}" for item in targets[:10])
         more = "" if len(targets) <= 10 else f"\n... +{len(targets) - 10} autre(s)"
         settings = self._save_form_settings()
@@ -728,6 +741,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         def work() -> tuple[list, list, list[LocalMod]]:
+            # Apply/simulate updates first, then re-scan to reflect resulting local state.
             applied, errors = apply_updates(targets, settings, dry_run=settings.dry_run)
             post_mods = scan_mods(settings.mods_directory) if settings.mods_directory else list(self.local_mods)
             return applied, errors, post_mods
@@ -860,6 +874,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self._refresh_details_from_selection()
 
     def _show_matching_confidence_dialog(self) -> None:
+        """Display provider candidates, confidence, and selected matches per mod."""
         if not self.update_infos:
             QtWidgets.QMessageBox.information(
                 self,
@@ -970,6 +985,7 @@ class MainWindow(QtWidgets.QMainWindow):
         dialog.exec()
 
     def _export_report(self) -> None:
+        """Export the latest in-memory report to JSON and CSV files."""
         settings = self._save_form_settings()
 
         if self.last_report is None:

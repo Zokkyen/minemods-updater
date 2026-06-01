@@ -1,3 +1,9 @@
+"""Local .jar scanner for Minecraft mods.
+
+The scanner parses common metadata formats (Fabric/Quilt/Forge/legacy) and
+falls back to filename heuristics when archives do not expose enough data.
+"""
+
 from __future__ import annotations
 
 import json
@@ -14,6 +20,7 @@ METADATA_PLACEHOLDER_VERSION = "${file.jarVersion}"
 
 
 def scan_mods(mods_directory: str) -> list[LocalMod]:
+    """Scan a mods directory and return normalized local mod descriptors."""
     mods_path = Path(mods_directory)
     if not mods_path.exists() or not mods_path.is_dir():
         raise FileNotFoundError(f"Le dossier mods n'existe pas: {mods_directory}")
@@ -29,6 +36,7 @@ def scan_mods(mods_directory: str) -> list[LocalMod]:
 
 
 def autodetect_loader_and_minecraft(mods: list[LocalMod]) -> tuple[str, str]:
+    """Infer the dominant loader and Minecraft version from scanned metadata."""
     loader_counter = Counter(m.loader_hint for m in mods if m.loader_hint and m.loader_hint != "unknown")
     mc_counter = Counter(m.minecraft_hint for m in mods if m.minecraft_hint)
 
@@ -38,6 +46,7 @@ def autodetect_loader_and_minecraft(mods: list[LocalMod]) -> tuple[str, str]:
 
 
 def _parse_mod_jar(jar_path: Path) -> LocalMod:
+    """Route archive parsing to the first known metadata format available."""
     with zipfile.ZipFile(jar_path, "r") as archive:
         names = set(archive.namelist())
 

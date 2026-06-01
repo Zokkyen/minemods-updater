@@ -1,3 +1,9 @@
+"""Persistence layer for user settings and profile management.
+
+This module keeps backward compatibility with legacy app folder names and
+handles profile read/write operations as a single source of truth.
+"""
+
 from __future__ import annotations
 
 import json
@@ -135,6 +141,7 @@ def remove_profile(settings: AppSettings, profile_name: str) -> str:
 
 
 def load_settings() -> AppSettings:
+    """Load settings from disk, with a fallback to the legacy settings location."""
     path = settings_file_path()
     if not path.exists():
         legacy_path = _legacy_settings_file_path()
@@ -201,6 +208,7 @@ def load_settings() -> AppSettings:
 
 
 def save_settings(settings: AppSettings) -> None:
+    """Persist the current settings (including the active profile snapshot)."""
     write_back_active_profile(settings)
     path = settings_file_path()
     path.parent.mkdir(parents=True, exist_ok=True)
