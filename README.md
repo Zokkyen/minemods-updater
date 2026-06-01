@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="minemods-updater.png" alt="MineMods Updater" width="800"/>
+</p>
+
 # MineMods Updater
 
 MineMods Updater est un logiciel desktop Windows qui vérifie et applique les mises à jour de mods Minecraft en tenant compte de la version du jeu et du loader (Fabric, Forge, Quilt, NeoForge).
