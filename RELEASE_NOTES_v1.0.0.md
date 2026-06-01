@@ -6,6 +6,15 @@ Date de sortie: 2026-06-01
 
 Première version publique de MineMods Updater, une application desktop Windows qui automatise la vérification et la mise à jour des mods Minecraft selon la version du jeu et le loader.
 
+## Améliorations récentes (post v1.0.0)
+
+- Vérification des mises à jour accélérée via traitement parallèle.
+- Cache local court pour les checks répétitifs (moins de requêtes inutiles à la suite).
+- Fallback automatique quand un mapping Modrinth est obsolète.
+- Scan auto après sélection du dossier mods.
+- Interface recentrée mods-first: tri de colonnes, filtres combinables, recherche, logs repliables.
+- Matching acronymes amélioré pour les mods nommés de façon abrégée.
+
 ## Points forts
 
 - Scan local des fichiers .jar du dossier mods

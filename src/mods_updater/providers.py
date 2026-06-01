@@ -227,11 +227,9 @@ class ModrinthProvider:
     ) -> UpdateInfo:
         try:
             project_id = project_map.get(local_mod.mod_id)
+            mapped_project_id = project_id
             match_candidates: list[MatchCandidate] = []
             match_note = ""
-
-            if project_id and not self._project_exists(project_id):
-                project_id = None
 
             if project_id:
                 match_candidates = [
@@ -276,7 +274,47 @@ class ModrinthProvider:
                     match_candidates=match_candidates,
                 )
 
-            versions = self._fetch_versions(project_id, minecraft_version, loader)
+            try:
+                versions = self._fetch_versions(project_id, minecraft_version, loader)
+            except requests.HTTPError as exc:
+                status_code = exc.response.status_code if exc.response is not None else None
+                if mapped_project_id and status_code == 404:
+                    # Cached mapping points to a deleted/private project: retry via search.
+                    project_map.pop(local_mod.mod_id, None)
+                    hit, match_candidates, match_note = self._search_best_project(
+                        local_mod,
+                        minecraft_version,
+                        loader,
+                        strict_matching,
+                    )
+                    if not hit:
+                        return UpdateInfo(
+                            local_mod=local_mod,
+                            status="not_found",
+                            message="Mapping Modrinth obsolète et aucun remplaçant fiable trouvé.",
+                            provider=self.name,
+                            match_note=match_note,
+                            match_candidates=match_candidates,
+                        )
+
+                    project_id = hit.get("project_id")
+                    if not project_id:
+                        return UpdateInfo(
+                            local_mod=local_mod,
+                            status="not_found",
+                            message="Projet Modrinth introuvable après invalidation du mapping.",
+                            provider=self.name,
+                            match_note=match_note,
+                            match_candidates=match_candidates,
+                        )
+
+                    if not match_note:
+                        match_note = "Mapping local obsolète, recherche relancée automatiquement."
+
+                    versions = self._fetch_versions(project_id, minecraft_version, loader)
+                else:
+                    raise
+
             status, message, latest, intermediate = _rank_versions(local_mod.version, versions)
 
             if status != "not_found":
@@ -311,13 +349,6 @@ class ModrinthProvider:
                 message=f"Modrinth error: {exc}",
                 provider=self.name,
             )
-
-    def _project_exists(self, project_id: str) -> bool:
-        response = self.session.get(f"{self.base_url}/project/{project_id}", timeout=REQUEST_TIMEOUT_SECONDS)
-        if response.status_code == 404:
-            return False
-        response.raise_for_status()
-        return True
 
     def _search_best_project(
         self,

@@ -5,14 +5,18 @@ MineMods Updater est un logiciel desktop Windows qui vérifie et applique les mi
 ## Fonctionnalités
 
 - Scan des mods `.jar` dans un dossier `mods`
+- Scan automatique dès la sélection du dossier `mods`
 - Détection automatique du contexte (loader + version Minecraft)
 - Vérification des mises à jour via Modrinth et CurseForge
+- Vérification accélérée: traitement parallèle + cache local court des checks récents
 - Matching strict anti faux-positifs
 - Vue de confiance de matching (scores/candidats avant validation)
 - Mode **dry-run** (simulation sans écrire sur disque)
 - Mise à jour sélective ou globale
 - Backup automatique des anciens mods en `.old`
 - Changelog filtré (breaking/fix/performance/other)
+- Tableau mods orienté productivité: tri colonnes + filtres combinables + recherche texte
+- Logs repliables pour laisser plus de place à la liste des mods
 - Export de rapport **JSON + CSV** (avant/après opération)
 - Profils multi-instances Minecraft
 
@@ -54,11 +58,25 @@ Sortie attendue:
 1. Choisir le dossier `mods`
 2. Vérifier la version Minecraft et le loader (ou cliquer sur `Auto detect`)
 3. Activer les providers voulus (Modrinth/CurseForge)
-4. Lancer `Scanner` puis `Vérifier updates`
-5. Consulter `Confiance matching` avant validation
-6. Activer `Dry-run` pour simuler si besoin
-7. Lancer la mise à jour (sélection ou globale)
-8. Exporter le rapport JSON/CSV
+4. Le scan démarre automatiquement après sélection du dossier (sinon bouton `Scanner`)
+5. Lancer `Vérifier les mises à jour`
+6. Consulter `Confiance matching` avant validation
+7. Activer `Dry-run` pour simuler si besoin
+8. Lancer la mise à jour (sélection ou globale)
+9. Exporter le rapport JSON/CSV
+
+## Performance et réactivité
+
+- Le check des mises à jour est parallélisé pour réduire le temps d'attente sur les gros modpacks.
+- Un cache local court (TTL ~90s) évite de refaire les mêmes requêtes juste après un check.
+- Le log affiche maintenant la durée totale, le nombre de cache hits/misses et le nombre de workers utilisés.
+- Le mapping provider est réutilisé et auto-corrigé côté Modrinth en cas de mapping obsolète (fallback automatique).
+
+Bonnes pratiques:
+
+- Lancer un premier check complet après scan.
+- Enchaîner les vérifications rapides ensuite (tu bénéficies du cache).
+- Garder le mode strict activé pour limiter les faux-positifs quand les noms de mods sont ambigus.
 
 ## Rapports exportés
 

@@ -6,9 +6,14 @@ replacement with backups, and changelog categorization for UI display.
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
+import threading
+import time
 
 import requests
 
@@ -19,7 +24,21 @@ from .providers import CurseForgeProvider, ModrinthProvider, resolve_updates_for
 
 DOWNLOAD_CHUNK_SIZE = 1024 * 128
 DOWNLOAD_TIMEOUT = 45
+CHECK_UPDATES_PARALLEL_THRESHOLD = 4
+CHECK_UPDATES_MAX_WORKERS = 6
+CHECK_UPDATES_CACHE_TTL_SECONDS = 90
+CHECK_UPDATES_CACHE_MAX_ENTRIES = 500
 CHANGELOG_CATEGORY_ORDER = ["breaking", "fix", "performance", "other"]
+
+_CHECK_CACHE_LOCK = threading.Lock()
+_CHECK_CACHE: dict[str, tuple[float, UpdateInfo]] = {}
+
+_CHECK_STATS_LOCK = threading.Lock()
+_LAST_CHECK_STATS = {
+    "cache_hits": 0,
+    "cache_misses": 0,
+    "workers": 0,
+}
 
 BREAKING_KEYWORDS = {
     "breaking",
@@ -70,22 +89,201 @@ class AppliedUpdate:
     simulated: bool = False
 
 
+def get_last_check_stats() -> dict[str, int]:
+    """Expose lightweight runtime metrics for the latest check-updates run."""
+    with _CHECK_STATS_LOCK:
+        return dict(_LAST_CHECK_STATS)
+
+
 def check_updates(mods: list[LocalMod], settings: AppSettings) -> list[UpdateInfo]:
     """Resolve update status for every scanned local mod."""
-    modrinth = ModrinthProvider()
-    curseforge = CurseForgeProvider(settings.curseforge_api_key) if settings.use_curseforge else None
+    if not mods:
+        _set_last_check_stats(cache_hits=0, cache_misses=0, workers=0)
+        return []
 
-    updates: list[UpdateInfo] = []
-    for local_mod in mods:
-        update_info = resolve_updates_for_mod(
-            local_mod=local_mod,
-            settings=settings,
-            modrinth=modrinth,
-            curseforge=curseforge,
-        )
-        updates.append(update_info)
+    workers = _compute_check_workers(len(mods), settings)
+    ordered_results: list[UpdateInfo | None] = [None] * len(mods)
+    pending: list[tuple[int, LocalMod, str]] = []
 
-    return updates
+    for index, local_mod in enumerate(mods):
+        cache_key = _build_check_cache_key(local_mod, settings)
+        cached = _get_cached_update(cache_key)
+        if cached is not None:
+            ordered_results[index] = cached
+            continue
+        pending.append((index, local_mod, cache_key))
+
+    cache_hits = len(mods) - len(pending)
+    cache_misses = len(pending)
+
+    if not pending:
+        _set_last_check_stats(cache_hits=cache_hits, cache_misses=cache_misses, workers=0)
+        return [item for item in ordered_results if item is not None]
+
+    if workers <= 1:
+        modrinth = ModrinthProvider()
+        curseforge = CurseForgeProvider(settings.curseforge_api_key) if settings.use_curseforge else None
+
+        for index, local_mod, cache_key in pending:
+            update_info = resolve_updates_for_mod(
+                local_mod=local_mod,
+                settings=settings,
+                modrinth=modrinth,
+                curseforge=curseforge,
+            )
+            ordered_results[index] = update_info
+            _store_cached_update(cache_key, update_info)
+
+        _set_last_check_stats(cache_hits=cache_hits, cache_misses=cache_misses, workers=1)
+        return [item for item in ordered_results if item is not None]
+
+    thread_state = threading.local()
+
+    def _resolve_one(index: int, local_mod: LocalMod, cache_key: str) -> tuple[int, str, UpdateInfo]:
+        try:
+            modrinth, curseforge = _thread_providers(thread_state, settings)
+            update_info = resolve_updates_for_mod(
+                local_mod=local_mod,
+                settings=settings,
+                modrinth=modrinth,
+                curseforge=curseforge,
+            )
+            return index, cache_key, update_info
+        except Exception as exc:
+            return (
+                index,
+                cache_key,
+                UpdateInfo(
+                    local_mod=local_mod,
+                    status="error",
+                    message=f"Check error: {exc}",
+                    provider="",
+                ),
+            )
+
+    with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="mod-check") as executor:
+        futures = [
+            executor.submit(_resolve_one, index, local_mod, cache_key)
+            for index, local_mod, cache_key in pending
+        ]
+        for future in as_completed(futures):
+            index, cache_key, update_info = future.result()
+            ordered_results[index] = update_info
+            _store_cached_update(cache_key, update_info)
+
+    _set_last_check_stats(cache_hits=cache_hits, cache_misses=cache_misses, workers=workers)
+
+    return [item for item in ordered_results if item is not None]
+
+
+def _build_check_cache_key(local_mod: LocalMod, settings: AppSettings) -> str:
+    resolved_loader = local_mod.loader_hint if settings.loader == "auto" and local_mod.loader_hint != "unknown" else settings.loader
+
+    try:
+        stat = local_mod.path.stat()
+        file_fingerprint = f"{stat.st_size}:{stat.st_mtime_ns}"
+    except OSError:
+        file_fingerprint = "missing"
+
+    mapped_modrinth = settings.modrinth_project_map.get(local_mod.mod_id, "") if settings.use_modrinth else ""
+    mapped_curseforge = str(settings.curseforge_project_map.get(local_mod.mod_id, "")) if settings.use_curseforge else ""
+
+    return "|".join(
+        [
+            str(local_mod.path).lower(),
+            local_mod.mod_id.strip().lower(),
+            local_mod.version.strip().lower(),
+            file_fingerprint,
+            settings.minecraft_version.strip().lower(),
+            resolved_loader.strip().lower(),
+            "mr1" if settings.use_modrinth else "mr0",
+            "cf1" if settings.use_curseforge else "cf0",
+            "strict1" if settings.strict_matching else "strict0",
+            mapped_modrinth,
+            mapped_curseforge,
+        ]
+    )
+
+
+def _get_cached_update(cache_key: str) -> UpdateInfo | None:
+    now = time.monotonic()
+    with _CHECK_CACHE_LOCK:
+        entry = _CHECK_CACHE.get(cache_key)
+        if not entry:
+            return None
+
+        stored_at, update_info = entry
+        if now - stored_at > CHECK_UPDATES_CACHE_TTL_SECONDS:
+            _CHECK_CACHE.pop(cache_key, None)
+            return None
+
+        return deepcopy(update_info)
+
+
+def _store_cached_update(cache_key: str, update_info: UpdateInfo) -> None:
+    # Keep transient network failures outside cache to allow immediate retry.
+    if update_info.status == "error":
+        return
+
+    now = time.monotonic()
+    with _CHECK_CACHE_LOCK:
+        _prune_expired_cache_locked(now)
+        _CHECK_CACHE[cache_key] = (now, deepcopy(update_info))
+
+        if len(_CHECK_CACHE) <= CHECK_UPDATES_CACHE_MAX_ENTRIES:
+            return
+
+        overflow = len(_CHECK_CACHE) - CHECK_UPDATES_CACHE_MAX_ENTRIES
+        oldest_keys = [
+            key
+            for key, _ in sorted(_CHECK_CACHE.items(), key=lambda item: item[1][0])[:overflow]
+        ]
+        for key in oldest_keys:
+            _CHECK_CACHE.pop(key, None)
+
+
+def _prune_expired_cache_locked(now: float) -> None:
+    expired_keys = [
+        key
+        for key, (stored_at, _) in _CHECK_CACHE.items()
+        if now - stored_at > CHECK_UPDATES_CACHE_TTL_SECONDS
+    ]
+    for key in expired_keys:
+        _CHECK_CACHE.pop(key, None)
+
+
+def _set_last_check_stats(cache_hits: int, cache_misses: int, workers: int) -> None:
+    with _CHECK_STATS_LOCK:
+        _LAST_CHECK_STATS["cache_hits"] = max(0, int(cache_hits))
+        _LAST_CHECK_STATS["cache_misses"] = max(0, int(cache_misses))
+        _LAST_CHECK_STATS["workers"] = max(0, int(workers))
+
+
+def _compute_check_workers(mod_count: int, settings: AppSettings) -> int:
+    if mod_count < CHECK_UPDATES_PARALLEL_THRESHOLD:
+        return 1
+
+    curseforge_penalty = 1 if settings.use_curseforge else 0
+    cpu_budget = max(2, (os.cpu_count() or 4))
+    recommended = min(CHECK_UPDATES_MAX_WORKERS - curseforge_penalty, cpu_budget)
+    return max(1, min(mod_count, recommended))
+
+
+def _thread_providers(
+    thread_state: threading.local,
+    settings: AppSettings,
+) -> tuple[ModrinthProvider, CurseForgeProvider | None]:
+    modrinth = getattr(thread_state, "modrinth", None)
+    if modrinth is None:
+        modrinth = ModrinthProvider()
+        setattr(thread_state, "modrinth", modrinth)
+
+    if not hasattr(thread_state, "curseforge"):
+        curseforge = CurseForgeProvider(settings.curseforge_api_key) if settings.use_curseforge else None
+        setattr(thread_state, "curseforge", curseforge)
+
+    curseforge = getattr(thread_state, "curseforge")
+    return modrinth, curseforge
 
 
 def apply_updates(items: list[UpdateInfo], settings: AppSettings, dry_run: bool = False) -> tuple[list[AppliedUpdate], list[str]]:

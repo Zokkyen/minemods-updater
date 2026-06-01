@@ -33,7 +33,7 @@ from .settings_store import (
     set_active_profile,
     write_back_active_profile,
 )
-from .update_service import CHANGELOG_CATEGORY_ORDER, apply_updates, build_changelog_text, check_updates
+from .update_service import CHANGELOG_CATEGORY_ORDER, apply_updates, build_changelog_text, check_updates, get_last_check_stats
 
 
 class TaskThread(QtCore.QThread):
@@ -173,8 +173,8 @@ class MainWindow(QtWidgets.QMainWindow):
         self.export_report_button = QtWidgets.QPushButton("Exporter le rapport JSON/CSV")
         self.export_report_button.clicked.connect(self._export_report)
 
-        self.scan_button.setToolTip("Étape 1: scanner les mods présents dans le dossier.")
-        self.check_updates_button.setToolTip("Étape 2: vérifier les mises à jour disponibles sur les providers.")
+        self.scan_button.setToolTip("Scanner les mods présents dans le dossier (auto-scan aussi après sélection du dossier).")
+        self.check_updates_button.setToolTip("Vérifier les mises à jour disponibles sur les providers (check parallèle + cache court).")
         self.matching_button.setToolTip("Étape 3: contrôler les scores de matching avant validation.")
         self.dry_run_checkbox.setToolTip("Option: simuler les actions sans modifier les fichiers .jar.")
         self.update_selected_button.setToolTip("Étape 4: appliquer uniquement les mods cochés.")
@@ -825,6 +825,7 @@ class MainWindow(QtWidgets.QMainWindow):
             return
 
         settings = self._save_form_settings()
+        started_at = datetime.now()
 
         if not settings.use_modrinth and not settings.use_curseforge:
             QtWidgets.QMessageBox.warning(self, "Provider", "Active au moins un provider (Modrinth ou CurseForge).")
@@ -846,8 +847,14 @@ class MainWindow(QtWidgets.QMainWindow):
             missing = len([u for u in self.update_infos if u.status == "not_found"])
             errors = len([u for u in self.update_infos if u.status == "error"])
             strict_state = "on" if self.settings.strict_matching else "off"
+            elapsed = (datetime.now() - started_at).total_seconds()
+            stats = get_last_check_stats()
+            cache_hits = int(stats.get("cache_hits", 0))
+            cache_misses = int(stats.get("cache_misses", 0))
+            workers = int(stats.get("workers", 0))
+            worker_label = "cache-only" if workers <= 0 else str(workers)
             self._log(
-                f"Vérification terminée: {available} mise(s) à jour, {uptodate} à jour, {missing} introuvable(s), {errors} erreur(s), strict={strict_state}."
+                f"Vérification terminée en {elapsed:.1f}s: {available} mise(s) à jour, {uptodate} à jour, {missing} introuvable(s), {errors} erreur(s), strict={strict_state}, cache hits={cache_hits}, misses={cache_misses}, workers={worker_label}."
             )
 
         self._run_task(work, done, "Vérification des mises à jour...")
