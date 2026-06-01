@@ -56,7 +56,7 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle(APP_NAME)
-        self.resize(1480, 940)
+        self.resize(1440, 900)
 
         self.settings = load_settings()
         self.modrinth = ModrinthProvider()
@@ -80,20 +80,20 @@ class MainWindow(QtWidgets.QMainWindow):
     def _build_ui(self) -> None:
         root = QtWidgets.QWidget()
         root_layout = QtWidgets.QVBoxLayout(root)
-        root_layout.setContentsMargins(20, 18, 20, 18)
-        root_layout.setSpacing(14)
+        root_layout.setContentsMargins(14, 12, 14, 12)
+        root_layout.setSpacing(10)
 
         hero = QtWidgets.QFrame()
         hero.setObjectName("hero")
         hero_layout = QtWidgets.QHBoxLayout(hero)
-        hero_layout.setContentsMargins(22, 18, 22, 18)
-        hero_layout.setSpacing(20)
+        hero_layout.setContentsMargins(14, 10, 14, 10)
+        hero_layout.setSpacing(14)
 
         title_block = QtWidgets.QVBoxLayout()
         title = QtWidgets.QLabel(APP_NAME)
         title.setObjectName("heroTitle")
         subtitle = QtWidgets.QLabel(
-            "Scan des .jar, vérification providers, simulation dry-run, export de rapports et backup .old"
+            "Scan rapide des mods, vérification provider, dry-run et rapport JSON/CSV"
         )
         subtitle.setObjectName("heroSubtitle")
         subtitle.setWordWrap(True)
@@ -111,9 +111,9 @@ class MainWindow(QtWidgets.QMainWindow):
         controls = QtWidgets.QFrame()
         controls.setObjectName("controlsCard")
         controls_layout = QtWidgets.QGridLayout(controls)
-        controls_layout.setContentsMargins(18, 18, 18, 18)
-        controls_layout.setHorizontalSpacing(12)
-        controls_layout.setVerticalSpacing(10)
+        controls_layout.setContentsMargins(12, 10, 12, 10)
+        controls_layout.setHorizontalSpacing(10)
+        controls_layout.setVerticalSpacing(8)
 
         self.mods_dir_input = QtWidgets.QLineEdit()
         self.mods_dir_input.setPlaceholderText("Dossier mods Minecraft")
@@ -123,7 +123,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mc_version_combo = QtWidgets.QComboBox()
         self.mc_version_combo.setEditable(True)
         self.mc_version_combo.setInsertPolicy(QtWidgets.QComboBox.InsertPolicy.NoInsert)
-        refresh_versions_button = QtWidgets.QPushButton("Actualiser versions MC")
+        refresh_versions_button = QtWidgets.QPushButton("Versions MC")
         refresh_versions_button.clicked.connect(lambda: self._refresh_minecraft_versions(background=True))
 
         self.loader_combo = QtWidgets.QComboBox()
@@ -142,31 +142,34 @@ class MainWindow(QtWidgets.QMainWindow):
         self.curseforge_api_key_input.setPlaceholderText("API key CurseForge (optionnel)")
         self.curseforge_api_key_input.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
 
-        self.strict_matching_checkbox = QtWidgets.QCheckBox("Matching strict anti faux-positifs")
+        self.strict_matching_checkbox = QtWidgets.QCheckBox("Matching strict (anti faux-positifs)")
         self.strict_matching_checkbox.setChecked(True)
-        self.dry_run_checkbox = QtWidgets.QCheckBox("Dry-run (simulation sans écriture)")
+        self.dry_run_checkbox = QtWidgets.QCheckBox("Dry-run (sans écriture)")
         self.dry_run_checkbox.setChecked(False)
 
         self.auto_detect_button = QtWidgets.QPushButton("Auto-détecter")
         self.auto_detect_button.clicked.connect(self._autodetect_context)
         self.scan_button = QtWidgets.QPushButton("Scanner")
         self.scan_button.clicked.connect(self._scan_mods)
-        self.check_updates_button = QtWidgets.QPushButton("Vérifier les mises à jour")
+        self.check_updates_button = QtWidgets.QPushButton("Vérifier")
         self.check_updates_button.clicked.connect(self._check_updates)
 
         self.update_selected_button = QtWidgets.QPushButton("Mettre à jour la sélection")
         self.update_selected_button.clicked.connect(self._update_selected_mods)
-        self.update_all_button = QtWidgets.QPushButton("Tout mettre à jour")
+        self.update_all_button = QtWidgets.QPushButton("Tout mettre à jour (disponibles)")
         self.update_all_button.clicked.connect(self._update_all_mods)
-        self.export_report_button = QtWidgets.QPushButton("Exporter le rapport JSON/CSV")
+        self.export_report_button = QtWidgets.QPushButton("Exporter rapport")
         self.export_report_button.clicked.connect(self._export_report)
 
-        self.scan_button.setToolTip("Scanner les mods présents dans le dossier (auto-scan aussi après sélection du dossier).")
-        self.check_updates_button.setToolTip("Vérifier les mises à jour disponibles sur les providers (check parallèle + cache court).")
-        self.dry_run_checkbox.setToolTip("Option: simuler les actions sans modifier les fichiers .jar.")
+        self.scan_button.setToolTip("Scanner les mods présents dans le dossier (auto-scan aussi après choix du dossier).")
+        self.check_updates_button.setToolTip("Vérifier les mises à jour disponibles (check parallèle + cache court).")
+        self.dry_run_checkbox.setToolTip("Simuler les actions sans modifier les fichiers .jar.")
         self.update_selected_button.setToolTip("Appliquer uniquement les mods cochés.")
-        self.update_all_button.setToolTip("Appliquer toutes les mises à jour disponibles.")
-        self.export_report_button.setToolTip("Exporter un rapport JSON/CSV avant ou après opération.")
+        self.update_all_button.setToolTip(
+            "Appliquer uniquement les mods marqués 'Mise à jour disponible'. "
+            "Les mods en erreur/introuvables sont ignorés et les échecs n'arrêtent pas le lot."
+        )
+        self.export_report_button.setToolTip("Exporter un rapport JSON/CSV (avant ou après opération).")
 
         controls_layout.addWidget(QtWidgets.QLabel("Dossier mods"), 1, 0)
         controls_layout.addWidget(self.mods_dir_input, 1, 1, 1, 3)
@@ -192,7 +195,7 @@ class MainWindow(QtWidgets.QMainWindow):
         controls_layout.addWidget(self.update_selected_button, 5, 3)
         controls_layout.addWidget(self.update_all_button, 5, 4)
 
-        self.show_logs_checkbox = QtWidgets.QCheckBox("Afficher les logs")
+        self.show_logs_checkbox = QtWidgets.QCheckBox("Logs")
         self.show_logs_checkbox.setChecked(False)
         self.show_logs_checkbox.stateChanged.connect(self._on_show_logs_changed)
 
@@ -206,13 +209,16 @@ class MainWindow(QtWidgets.QMainWindow):
         table_card = QtWidgets.QFrame()
         table_card.setObjectName("tableCard")
         table_layout = QtWidgets.QVBoxLayout(table_card)
-        table_layout.setContentsMargins(12, 12, 12, 12)
+        table_layout.setContentsMargins(10, 10, 10, 10)
+        table_layout.setSpacing(8)
 
         table_filters = QtWidgets.QHBoxLayout()
-        table_filters.setSpacing(8)
+        table_filters.setSpacing(6)
 
         self.mods_search_input = QtWidgets.QLineEdit()
         self.mods_search_input.setPlaceholderText("Rechercher un mod (nom, ID, fichier)")
+        self.mods_search_input.setMinimumWidth(460)
+        self.mods_search_input.setClearButtonEnabled(True)
         self.mods_search_input.textChanged.connect(self._on_table_filter_changed)
 
         self.status_filter_combo = QtWidgets.QComboBox()
@@ -222,6 +228,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.status_filter_combo.addItem("Introuvables", "not_found")
         self.status_filter_combo.addItem("Erreurs", "error")
         self.status_filter_combo.addItem("Scannés", "scanned")
+        self.status_filter_combo.setMinimumWidth(132)
         self.status_filter_combo.currentIndexChanged.connect(self._on_table_filter_changed)
 
         self.source_filter_combo = QtWidgets.QComboBox()
@@ -229,18 +236,21 @@ class MainWindow(QtWidgets.QMainWindow):
         self.source_filter_combo.addItem("Modrinth", "modrinth")
         self.source_filter_combo.addItem("CurseForge", "curseforge")
         self.source_filter_combo.addItem("Autre", "other")
+        self.source_filter_combo.setMinimumWidth(132)
         self.source_filter_combo.currentIndexChanged.connect(self._on_table_filter_changed)
 
-        self.select_visible_button = QtWidgets.QPushButton("Tout cocher (affichés)")
+        self.select_visible_button = QtWidgets.QPushButton("Cocher visibles")
         self.select_visible_button.clicked.connect(lambda: self._set_check_state_for_visible_rows(QtCore.Qt.CheckState.Checked))
-        self.clear_visible_button = QtWidgets.QPushButton("Tout décocher (affichés)")
+        self.clear_visible_button = QtWidgets.QPushButton("Décocher visibles")
         self.clear_visible_button.clicked.connect(lambda: self._set_check_state_for_visible_rows(QtCore.Qt.CheckState.Unchecked))
+        self.select_visible_button.setMaximumWidth(145)
+        self.clear_visible_button.setMaximumWidth(155)
 
-        self.visible_count_label = QtWidgets.QLabel("Affichés: 0/0")
+        self.visible_count_label = QtWidgets.QLabel("Visibles: 0/0")
         self.visible_count_label.setObjectName("visibleCount")
 
         table_filters.addWidget(QtWidgets.QLabel("Recherche:"))
-        table_filters.addWidget(self.mods_search_input, 2)
+        table_filters.addWidget(self.mods_search_input, 4)
         table_filters.addWidget(QtWidgets.QLabel("État:"))
         table_filters.addWidget(self.status_filter_combo)
         table_filters.addWidget(QtWidgets.QLabel("Source:"))
@@ -272,19 +282,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.mods_table.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
         self.mods_table.setEditTriggers(QtWidgets.QAbstractItemView.EditTrigger.NoEditTriggers)
         self.mods_table.setSortingEnabled(True)
+        self.mods_table.verticalHeader().setDefaultSectionSize(25)
         header = self.mods_table.horizontalHeader()
         header.setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Interactive)
         header.setMinimumSectionSize(56)
         header.setStretchLastSection(False)
         self.mods_table.setColumnWidth(0, 56)
-        self.mods_table.setColumnWidth(1, 280)
-        self.mods_table.setColumnWidth(2, 180)
-        self.mods_table.setColumnWidth(3, 130)
-        self.mods_table.setColumnWidth(4, 130)
-        self.mods_table.setColumnWidth(5, 160)
-        self.mods_table.setColumnWidth(6, 120)
-        self.mods_table.setColumnWidth(7, 90)
-        self.mods_table.setColumnWidth(8, 260)
+        self.mods_table.setColumnWidth(1, 260)
+        self.mods_table.setColumnWidth(2, 170)
+        self.mods_table.setColumnWidth(3, 120)
+        self.mods_table.setColumnWidth(4, 120)
+        self.mods_table.setColumnWidth(5, 148)
+        self.mods_table.setColumnWidth(6, 108)
+        self.mods_table.setColumnWidth(7, 82)
+        self.mods_table.setColumnWidth(8, 220)
         self.mods_table.itemSelectionChanged.connect(self._on_table_selection_changed)
 
         table_layout.addWidget(self.mods_table)
@@ -292,12 +303,12 @@ class MainWindow(QtWidgets.QMainWindow):
         detail_card = QtWidgets.QFrame()
         detail_card.setObjectName("detailCard")
         detail_layout = QtWidgets.QVBoxLayout(detail_card)
-        detail_layout.setContentsMargins(12, 12, 12, 12)
-        detail_layout.setSpacing(8)
+        detail_layout.setContentsMargins(10, 10, 10, 10)
+        detail_layout.setSpacing(6)
 
         detail_title = QtWidgets.QLabel("Détails des versions")
         detail_title.setObjectName("panelTitle")
-        self.open_mod_page_button = QtWidgets.QPushButton("Ouvrir la page du mod")
+        self.open_mod_page_button = QtWidgets.QPushButton("Ouvrir page mod")
         self.open_mod_page_button.setEnabled(False)
         self.open_mod_page_button.clicked.connect(self._open_selected_mod_page)
 
@@ -308,7 +319,7 @@ class MainWindow(QtWidgets.QMainWindow):
         detail_header.addWidget(self.open_mod_page_button)
 
         filters_row = QtWidgets.QHBoxLayout()
-        filters_row.setSpacing(8)
+        filters_row.setSpacing(6)
         filters_row.addWidget(QtWidgets.QLabel("Filtres changelog:"))
 
         self.filter_breaking = QtWidgets.QCheckBox("breaking")
@@ -346,7 +357,7 @@ class MainWindow(QtWidgets.QMainWindow):
         logs_title.setObjectName("panelTitle")
         self.logs_text = QtWidgets.QPlainTextEdit()
         self.logs_text.setReadOnly(True)
-        self.logs_text.setMaximumHeight(130)
+        self.logs_text.setMaximumHeight(110)
 
         logs_layout.addWidget(logs_title)
         logs_layout.addWidget(self.logs_text)
@@ -376,25 +387,25 @@ class MainWindow(QtWidgets.QMainWindow):
                     stop:1 #142639);
                 color: #eef5ff;
                 font-family: 'Bahnschrift', 'Segoe UI Variable', 'Segoe UI';
-                font-size: 10.5pt;
+                font-size: 10.2pt;
             }
             QFrame#hero, QFrame#controlsCard, QFrame#tableCard, QFrame#detailCard, QFrame#logsCard {
                 background: rgba(7, 15, 24, 0.82);
                 border: 1px solid rgba(102, 213, 255, 0.22);
-                border-radius: 14px;
+                border-radius: 12px;
             }
             QLabel#heroTitle {
-                font-size: 24pt;
+                font-size: 21pt;
                 font-weight: 700;
                 color: #f4fbff;
             }
             QLabel#heroSubtitle {
                 color: #9ec6db;
-                font-size: 10.5pt;
+                font-size: 9.8pt;
             }
             QLabel#busyBadge {
-                min-width: 150px;
-                padding: 7px 14px;
+                min-width: 138px;
+                padding: 6px 12px;
                 border-radius: 999px;
                 background: #1d3144;
                 color: #7be7ff;
@@ -404,7 +415,7 @@ class MainWindow(QtWidgets.QMainWindow):
             QLabel#panelTitle {
                 color: #90dcff;
                 font-weight: 600;
-                font-size: 10.8pt;
+                font-size: 10.5pt;
             }
             QLabel#creditLabel {
                 color: #7fa6be;
@@ -423,7 +434,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 border: 1px solid rgba(111, 198, 233, 0.25);
                 border-radius: 8px;
                 color: #eff8ff;
-                padding: 6px 8px;
+                padding: 5px 7px;
                 selection-background-color: #1b8fb9;
                 selection-color: #f2fbff;
             }
@@ -437,7 +448,7 @@ class MainWindow(QtWidgets.QMainWindow):
                     stop:1 #20a3bd);
                 border: 1px solid #39c0de;
                 border-radius: 8px;
-                padding: 7px 12px;
+                padding: 6px 10px;
                 color: #f5fdff;
                 font-weight: 600;
             }
@@ -452,11 +463,11 @@ class MainWindow(QtWidgets.QMainWindow):
                 border-color: #2f5871;
             }
             QCheckBox {
-                spacing: 8px;
+                spacing: 6px;
             }
             QCheckBox::indicator {
-                width: 16px;
-                height: 16px;
+                width: 14px;
+                height: 14px;
                 border-radius: 4px;
                 border: 1px solid #79b5cf;
                 background: #0e2437;
@@ -468,7 +479,7 @@ class MainWindow(QtWidgets.QMainWindow):
                 background: #17324a;
                 color: #d8f4ff;
                 border: none;
-                padding: 8px;
+                padding: 6px;
                 font-weight: 600;
             }
             QTableWidget {
@@ -646,7 +657,7 @@ class MainWindow(QtWidgets.QMainWindow):
             self._selected_mod_page_url = ""
             self.open_mod_page_button.setEnabled(False)
 
-        self.visible_count_label.setText(f"Affichés: {visible_count}/{self.mods_table.rowCount()}")
+        self.visible_count_label.setText(f"Visibles: {visible_count}/{self.mods_table.rowCount()}")
 
     def _on_show_logs_changed(self) -> None:
         self.logs_card.setVisible(self.show_logs_checkbox.isChecked())
@@ -822,6 +833,15 @@ class MainWindow(QtWidgets.QMainWindow):
         if not selected:
             QtWidgets.QMessageBox.information(self, "Mise à jour", "Aucune mise à jour disponible.")
             return
+
+        ignored_up_to_date = len([info for info in self.update_infos if info.status == "up_to_date"])
+        ignored_not_found = len([info for info in self.update_infos if info.status == "not_found"])
+        ignored_errors = len([info for info in self.update_infos if info.status == "error"])
+        self._log(
+            "Tout mettre à jour: "
+            f"{len(selected)} éligible(s), ignorés -> "
+            f"{ignored_up_to_date} à jour, {ignored_not_found} introuvable(s), {ignored_errors} erreur(s)."
+        )
         self._run_updates(selected)
 
     def _collect_target_updates(self, only_checked: bool) -> list[UpdateInfo]:

@@ -481,9 +481,22 @@ def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | No
     lines.append(f"Publiée: {update_info.latest.published_at.isoformat()}")
     lines.append("")
 
-    versions_to_describe = list(reversed(update_info.intermediate_versions))
-    if not versions_to_describe and update_info.latest is not None:
-        versions_to_describe = [update_info.latest]
+    versions_to_describe = []
+    section_title = "Versions analysées:"
+
+    if update_info.status == "update_available":
+        versions_to_describe = list(reversed(update_info.intermediate_versions))
+        if not versions_to_describe and update_info.latest is not None:
+            versions_to_describe = [update_info.latest]
+        section_title = "Versions intermédiaires détectées:" if update_info.intermediate_versions else "Version proposée:"
+    elif update_info.status == "up_to_date":
+        if update_info.latest is not None:
+            versions_to_describe = [update_info.latest]
+        section_title = "Changelog de la version actuelle:"
+    else:
+        versions_to_describe = list(reversed(update_info.intermediate_versions))
+        if not versions_to_describe and update_info.latest is not None:
+            versions_to_describe = [update_info.latest]
 
     if not versions_to_describe:
         lines.append(update_info.message)
@@ -495,7 +508,7 @@ def build_changelog_text(update_info: UpdateInfo, enabled_filters: set[str] | No
         lines.append(f"- {category}: {category_summary.get(category, 0)}")
 
     lines.append("")
-    lines.append("Versions intermédiaires détectées:")
+    lines.append(section_title)
     for version in versions_to_describe:
         lines.append("")
         lines.append(f"- {version.version_number} ({version.published_at.date().isoformat()})")

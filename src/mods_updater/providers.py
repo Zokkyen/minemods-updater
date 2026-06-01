@@ -28,6 +28,7 @@ REQUEST_BACKOFF_MAX_SECONDS = 8.0
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 MODRINTH_MIN_REQUEST_INTERVAL_SECONDS = 0.22
 MODRINTH_MAX_CONCURRENT_REQUESTS = 2
+LOCAL_NEWER_THAN_PROVIDER_MESSAGE = "Local version appears newer than provider latest; likely modpack-specific or private build."
 
 _modrinth_rate_lock = threading.Lock()
 _modrinth_last_request_at = 0.0
@@ -257,6 +258,25 @@ def _token_similarity(left: str, right: str) -> float:
     return len(left_tokens & right_tokens) / len(union)
 
 
+def _token_boundary_contains(haystack: str, needle: str) -> bool:
+    haystack_key = haystack.strip().lower()
+    needle_key = needle.strip().lower()
+    if not haystack_key or not needle_key:
+        return False
+
+    if haystack_key == needle_key:
+        return True
+
+    pattern = rf"(?<![a-z0-9]){re.escape(needle_key)}(?![a-z0-9])"
+    return re.search(pattern, haystack_key) is not None
+
+
+def _length_ratio(left: str, right: str) -> float:
+    if not left or not right:
+        return 0.0
+    return min(len(left), len(right)) / max(len(left), len(right))
+
+
 def _match_confidence(local_mod: LocalMod, candidate_slug: str, candidate_title: str) -> float:
     """Compute a confidence value based on string and token similarities."""
     local_values = [local_mod.mod_id, local_mod.name, local_mod.path.stem]
@@ -286,7 +306,45 @@ def _match_confidence(local_mod: LocalMod, candidate_slug: str, candidate_title:
         acronym_bonus = max(acronym_bonus, 0.22)
 
     # Weight token overlap higher to avoid matching stylistically similar but semantically different mods.
-    return min(1.0, max(best_string * 0.9, best_token * 1.05) + acronym_bonus)
+    confidence = min(1.0, max(best_string * 0.9, best_token * 1.05) + acronym_bonus)
+
+    local_key = _normalized_text(local_mod.mod_id or local_mod.name)
+    if len(local_key) >= 5 and best_token < 0.28:
+        for remote_value in remote_values:
+            remote_key = _normalized_text(remote_value)
+            if not remote_key or local_key == remote_key:
+                continue
+
+            # Penalize generic-prefix matches like "academy" -> "academycardalbumplus".
+            if local_key in remote_key and _length_ratio(local_key, remote_key) < 0.62:
+                confidence *= 0.72
+                break
+
+    return min(1.0, confidence)
+
+
+def _primary_semver_tuple(value: str) -> tuple[int, ...] | None:
+    normalized = _normalize_version(value)
+    short = normalized.split("+")[0]
+
+    token_match = re.search(r"\d+(?:\.\d+){1,3}", short)
+    if not token_match:
+        stripped = re.sub(r"^(fabric|forge|quilt|neoforge|minecraft|mc)[-_]+", "", short)
+        token_match = re.search(r"\d+(?:\.\d+){1,3}", stripped)
+    if not token_match:
+        return None
+
+    try:
+        return tuple(int(part) for part in token_match.group(0).split("."))
+    except ValueError:
+        return None
+
+
+def _is_semver_greater(left: tuple[int, ...], right: tuple[int, ...]) -> bool:
+    width = max(len(left), len(right))
+    left_padded = left + (0,) * (width - len(left))
+    right_padded = right + (0,) * (width - len(right))
+    return left_padded > right_padded
 
 
 def _version_matches(local_version: str, remote_version: str) -> bool:
@@ -346,6 +404,16 @@ def _rank_versions(local_version: str, versions: list[RemoteVersion]) -> tuple[s
 
     if _version_matches(local_version, latest.version_number):
         return "up_to_date", "Mod is already up to date.", latest, []
+
+    local_semver = _primary_semver_tuple(local_version)
+    latest_semver = _primary_semver_tuple(latest.version_number)
+    if local_semver and latest_semver and _is_semver_greater(local_semver, latest_semver):
+        return (
+            "not_found",
+            LOCAL_NEWER_THAN_PROVIDER_MESSAGE,
+            None,
+            [],
+        )
 
     # Local version missing on provider: propose latest compatible version.
     intermediate = versions[: min(8, len(versions))]
@@ -502,6 +570,17 @@ class ModrinthProvider:
 
             status, message, latest, intermediate = _rank_versions(local_mod.version, versions)
 
+            if status == "not_found" and message == LOCAL_NEWER_THAN_PROVIDER_MESSAGE:
+                project_map.pop(local_mod.mod_id, None)
+                return UpdateInfo(
+                    local_mod=local_mod,
+                    status="not_found",
+                    message=message,
+                    provider=self.name,
+                    match_note="Projet provider ignoré: version locale plus récente (modpack/privé probable).",
+                    match_candidates=match_candidates,
+                )
+
             if status != "not_found":
                 project_map[local_mod.mod_id] = project_id
 
@@ -645,9 +724,9 @@ class ModrinthProvider:
             score += 100
         if title == mod_id or title == name:
             score += 80
-        if mod_id and mod_id in slug:
+        if mod_id and _token_boundary_contains(slug, mod_id):
             score += 40
-        if name and name in title:
+        if name and _token_boundary_contains(title, name):
             score += 30
         if title_acronym and title_acronym == mod_id:
             score += 65
@@ -777,6 +856,17 @@ class CurseForgeProvider:
 
             versions = self._fetch_files(project_id, minecraft_version, loader)
             status, message, latest, intermediate = _rank_versions(local_mod.version, versions)
+
+            if status == "not_found" and message == LOCAL_NEWER_THAN_PROVIDER_MESSAGE:
+                project_map.pop(local_mod.mod_id, None)
+                return UpdateInfo(
+                    local_mod=local_mod,
+                    status="not_found",
+                    message=message,
+                    provider=self.name,
+                    match_note="Projet provider ignoré: version locale plus récente (modpack/privé probable).",
+                    match_candidates=match_candidates,
+                )
 
             if status != "not_found":
                 project_map[local_mod.mod_id] = project_id
@@ -910,9 +1000,9 @@ class CurseForgeProvider:
 
         if slug == mod_id:
             score += 100
-        if mod_id and mod_id in slug:
+        if mod_id and _token_boundary_contains(slug, mod_id):
             score += 45
-        if local_mod.name.lower() in name:
+        if _token_boundary_contains(name, local_mod.name.lower()):
             score += 30
         if name_acronym and name_acronym == mod_id:
             score += 65

@@ -27,6 +27,11 @@ def scan_mods(mods_directory: str) -> list[LocalMod]:
 
     mods: list[LocalMod] = []
     for path in sorted(mods_path.glob("*.jar")):
+        lower_name = path.name.lower()
+        # Ignore common backup/disabled variants that still end with .jar.
+        if lower_name.endswith(".old.jar") or lower_name.endswith(".disabled.jar"):
+            continue
+
         try:
             mod = _parse_mod_jar(path)
         except Exception:

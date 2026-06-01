@@ -16,13 +16,14 @@ MineMods Updater est un logiciel desktop Windows qui vérifie et applique les mi
 - Matching strict anti faux-positifs
 - Mode **dry-run** (simulation sans écrire sur disque)
 - Mise à jour sélective ou globale
-- Actions rapides: tout cocher / tout décocher sur les lignes affichées
+- Actions rapides: cocher / décocher les lignes visibles
 - Backup automatique des anciens mods en `.old`
 - Changelog filtré (breaking/fix/performance/other)
-- Tableau mods orienté productivité: tri colonnes + redimensionnement manuel + recherche texte
+- Tableau mods orienté productivité: tri colonnes + redimensionnement manuel + recherche large
 - Filtres clarifiés: un sélecteur État + un sélecteur Source
 - Bouton direct pour ouvrir la page du mod associé (Modrinth / CurseForge)
 - Logs repliables pour laisser plus de place à la liste des mods
+- Interface plus compacte: marges réduites, densité de lignes augmentée, actions courantes simplifiées
 - Export de rapport **JSON + CSV** (avant/après opération)
 
 ## Prérequis
@@ -55,10 +56,11 @@ Sortie attendue:
 3. Activer les providers voulus (Modrinth/CurseForge)
 4. Le scan démarre automatiquement après sélection du dossier (sinon bouton `Scanner`)
 5. Lancer `Vérifier les mises à jour`
-6. Utiliser les filtres `État` et `Source`, puis `Tout cocher (affichés)` si besoin
+6. Utiliser les filtres `État` et `Source`, puis `Cocher visibles` si besoin
 7. Vérifier les détails d'un mod et ouvrir sa page provider depuis le panneau de droite
 8. Activer `Dry-run` pour simuler si besoin
 9. Lancer la mise à jour (sélection ou globale)
+: la commande globale ne traite que les mods en `Mise à jour disponible` et ignore `À jour`, `Introuvable`, `Erreur`
 10. Exporter le rapport JSON/CSV
 
 ## Performance et réactivité
@@ -67,6 +69,8 @@ Sortie attendue:
 - Un cache local court (TTL ~90s) évite de refaire les mêmes requêtes juste après un check.
 - Le log affiche maintenant la durée totale, le nombre de cache hits/misses et le nombre de workers utilisés.
 - Le mapping provider est réutilisé et auto-corrigé côté Modrinth en cas de mapping obsolète (fallback automatique).
+- Les fichiers de backup (ex: `*.jar.old`, `*.old.jar`) sont ignorés au scan.
+- Les builds modpack/private plus récents que la dernière version provider sont classés en `Introuvable` pour éviter les faux upgrades.
 
 Bonnes pratiques:
 

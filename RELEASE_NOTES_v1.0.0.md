@@ -13,10 +13,15 @@ Première version publique de MineMods Updater, une application desktop Windows 
 - Fallback automatique quand un mapping Modrinth est obsolète.
 - Scan auto après sélection du dossier mods.
 - Interface recentrée mods-first: tri de colonnes, redimensionnement manuel, filtres clairs, recherche, logs repliables.
+- Interface plus compacte: espacements réduits, lignes plus denses, champ recherche élargi.
 - Actions rapides: tout cocher / tout décocher sur les mods affichés.
 - Bouton pour ouvrir la page provider du mod sélectionné (Modrinth/CurseForge).
 - Matching acronymes amélioré pour les mods nommés de façon abrégée.
 - Comparaison de versions améliorée (ex: `0.8.2` = `fabric-0.8.2`).
+- Changelog: quand un mod est déjà à jour, affichage de la version actuelle sans section "versions intermédiaires" trompeuse.
+- Détection modpack/private build: si la version locale est plus récente que le latest provider, le mod est classé introuvable (pas de faux upgrade proposé).
+- Scan renforcé: ignore aussi les variantes de backup désactivées comme `*.old.jar`.
+- "Tout mettre à jour" ne traite que les mods réellement éligibles (`Mise à jour disponible`) et ignore les statuts non applicables.
 
 ## Points forts
 
